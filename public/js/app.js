@@ -7,7 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDragAndDrop();
   setupFileInput();
   setupModalKeys();
+  setupClientAutocomplete();
   loadProjects();
+  loadClientNames();
 });
 
 // ─── Projects List ────────────────────────────────────────────
@@ -291,6 +293,8 @@ function showNewProjectModal() {
   document.getElementById('new-project-modal').style.display = 'flex';
   document.getElementById('project-name-input').value = '';
   document.getElementById('client-name-input').value = '';
+  document.getElementById('client-suggestions').style.display = 'none';
+  loadClientNames();
   setTimeout(() => document.getElementById('project-name-input').focus(), 100);
 }
 
@@ -355,6 +359,52 @@ function setupModalKeys() {
       }
     }
   });
+}
+
+// ─── Client Name Autocomplete ─────────────────────────────────
+let cachedClientNames = [];
+
+async function loadClientNames() {
+  try {
+    const res = await fetch('/api/client-names');
+    cachedClientNames = await res.json();
+  } catch { cachedClientNames = []; }
+}
+
+function setupClientAutocomplete() {
+  const input = document.getElementById('client-name-input');
+  const list = document.getElementById('client-suggestions');
+  if (!input || !list) return;
+
+  input.addEventListener('input', () => {
+    const val = input.value.trim().toLowerCase();
+    if (!val || cachedClientNames.length === 0) {
+      list.style.display = 'none';
+      return;
+    }
+    const matches = cachedClientNames.filter(n => n.toLowerCase().includes(val));
+    if (matches.length === 0) {
+      list.style.display = 'none';
+      return;
+    }
+    list.innerHTML = matches.map(n =>
+      `<div class="suggestion-item" onmousedown="selectClientName('${escapeHtml(n)}')">${escapeHtml(n)}</div>`
+    ).join('');
+    list.style.display = 'block';
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => { list.style.display = 'none'; }, 150);
+  });
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim()) input.dispatchEvent(new Event('input'));
+  });
+}
+
+function selectClientName(name) {
+  document.getElementById('client-name-input').value = name;
+  document.getElementById('client-suggestions').style.display = 'none';
 }
 
 // ─── Utilities ────────────────────────────────────────────────

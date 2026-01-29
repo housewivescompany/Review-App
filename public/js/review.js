@@ -5,10 +5,68 @@ let project = null;
 let creative = null;
 let creativeIndex = -1;
 
+// ─── Identity ─────────────────────────────────────────────────
+function getIdentity() {
+  try {
+    const data = localStorage.getItem('reviewflow_identity');
+    return data ? JSON.parse(data) : null;
+  } catch { return null; }
+}
+
+function setIdentity(name, email) {
+  localStorage.setItem('reviewflow_identity', JSON.stringify({ name, email }));
+}
+
+function showIdentityModal() {
+  const modal = document.getElementById('identity-modal');
+  const identity = getIdentity();
+  if (identity) {
+    document.getElementById('identity-name').value = identity.name || '';
+    document.getElementById('identity-email').value = identity.email || '';
+  }
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('identity-name').focus(), 100);
+}
+
+function hideIdentityModal() {
+  document.getElementById('identity-modal').style.display = 'none';
+}
+
+function saveIdentity() {
+  const name = document.getElementById('identity-name').value.trim();
+  if (!name) {
+    showToast('Please enter your name', 'error');
+    return;
+  }
+  const email = document.getElementById('identity-email').value.trim();
+  setIdentity(name, email);
+  hideIdentityModal();
+  updateIdentityDisplay();
+}
+
+function updateIdentityDisplay() {
+  const identity = getIdentity();
+  const el = document.getElementById('commenting-as');
+  if (identity && identity.name) {
+    el.textContent = `Commenting as ${identity.name}`;
+  } else {
+    el.textContent = 'Anonymous';
+  }
+}
+
+function checkIdentity() {
+  const identity = getIdentity();
+  if (!identity || !identity.name) {
+    showIdentityModal();
+  }
+  updateIdentityDisplay();
+}
+
 // ─── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   parseUrl();
   setupKeyboardNav();
+  setupIdentityKeys();
 });
 
 function parseUrl() {
@@ -41,6 +99,11 @@ function renderProjectOverview() {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('project-overview').style.display = 'block';
   document.title = `${project.name} - Review`;
+
+  // Logo links back to project overview, not dashboard
+  document.getElementById('logo-link').href = `/review/${projectId}`;
+
+  checkIdentity();
 
   document.getElementById('overview-project-name').textContent = project.name;
   document.getElementById('overview-client-name').textContent =
@@ -130,6 +193,11 @@ function renderCreativeReview() {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('review-content').style.display = 'flex';
   document.title = `${creative.title || creative.originalName} - Review`;
+
+  // Logo links back to project overview, not dashboard
+  document.getElementById('logo-link').href = `/review/${projectId}`;
+
+  checkIdentity();
 
   // Navigation controls
   const navControls = document.getElementById('nav-controls');
@@ -263,8 +331,14 @@ function renderComments() {
 }
 
 async function addComment() {
-  const author = document.getElementById('comment-author').value.trim();
+  const identity = getIdentity();
+  const author = (identity && identity.name) ? identity.name : 'Anonymous';
   const text = document.getElementById('comment-text').value.trim();
+
+  if (!identity || !identity.name) {
+    showIdentityModal();
+    return;
+  }
 
   if (!text) {
     showToast('Please enter a comment', 'error');
@@ -275,7 +349,7 @@ async function addComment() {
     const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ author: author || 'Anonymous', text })
+      body: JSON.stringify({ author, text })
     });
     const comment = await res.json();
     creative.comments.push(comment);
@@ -314,6 +388,17 @@ function setupKeyboardNav() {
 
     if (e.key === 'ArrowLeft') navigateCreative(-1);
     if (e.key === 'ArrowRight') navigateCreative(1);
+  });
+}
+
+function setupIdentityKeys() {
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const modal = document.getElementById('identity-modal');
+      if (modal && modal.style.display === 'flex') {
+        saveIdentity();
+      }
+    }
   });
 }
 

@@ -129,7 +129,10 @@
           </div>
           <div class="form-group">
             <label for="client-name-input">Client Name</label>
-            <input type="text" id="client-name-input" placeholder="e.g., Acme Corp">
+            <div class="suggestions-wrapper">
+              <input type="text" id="client-name-input" placeholder="e.g., Acme Corp" autocomplete="off">
+              <div id="client-suggestions" class="suggestions-list" style="display:none;"></div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">

@@ -81,6 +81,15 @@ app.get('/api/projects', (req, res) => {
   res.json(summaries);
 });
 
+// Get all unique client names for autocomplete
+app.get('/api/client-names', (req, res) => {
+  const projects = readProjects();
+  const names = [...new Set(
+    projects.map(p => p.clientName).filter(n => n && n.trim())
+  )].sort();
+  res.json(names);
+});
+
 // Create a new project
 app.post('/api/projects', (req, res) => {
   const { name, clientName } = req.body;
