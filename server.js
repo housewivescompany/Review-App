@@ -126,7 +126,12 @@ app.delete('/api/projects/:projectId', (req, res) => {
 });
 
 // Upload creatives to a project
-app.post('/api/projects/:projectId/creatives', upload.array('files', 50), (req, res) => {
+app.post('/api/projects/:projectId/creatives', (req, res, next) => {
+  // Extend timeout to 30 minutes for large video uploads
+  req.setTimeout(30 * 60 * 1000);
+  res.setTimeout(30 * 60 * 1000);
+  next();
+}, upload.array('files', 50), (req, res) => {
   const projects = readProjects();
   const project = projects.find(p => p.id === req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -272,6 +277,23 @@ app.get('/review/:projectId/:creativeId', (req, res) => {
 // Catch-all: serve index
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handling for multer and other upload errors
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'File too large. Maximum size is 500MB per file.' });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ error: 'Too many files. Maximum is 50 files at once.' });
+    }
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
+  }
+  if (err) {
+    return res.status(400).json({ error: err.message || 'Upload failed' });
+  }
+  next();
 });
 
 app.listen(PORT, () => {

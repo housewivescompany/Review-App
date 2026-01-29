@@ -259,21 +259,26 @@ async function uploadFiles(files) {
     });
 
     await new Promise((resolve, reject) => {
+      xhr.timeout = 30 * 60 * 1000; // 30 minute timeout for large files
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(JSON.parse(xhr.responseText));
         } else {
-          reject(new Error('Upload failed'));
+          let msg = 'Upload failed';
+          try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+          reject(new Error(msg));
         }
       };
-      xhr.onerror = () => reject(new Error('Upload failed'));
+      xhr.onerror = () => reject(new Error('Network error - check your connection and try again'));
+      xhr.ontimeout = () => reject(new Error('Upload timed out - file may be too large'));
+      xhr.onabort = () => reject(new Error('Upload was cancelled'));
       xhr.send(formData);
     });
 
     showToast(`${files.length} file${files.length > 1 ? 's' : ''} uploaded successfully!`);
     await openProject(currentProjectId);
   } catch (err) {
-    showToast('Upload failed. Please try again.', 'error');
+    showToast(err.message || 'Upload failed. Please try again.', 'error');
   } finally {
     progressEl.style.display = 'none';
     contentEl.style.display = 'flex';
