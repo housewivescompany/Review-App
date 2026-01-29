@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creative Review - ReviewFlow</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <a href="/" class="logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+            <path d="M2 17l10 5 10-5"></path>
+            <path d="M2 12l10 5 10-5"></path>
+          </svg>
+          <span>ReviewFlow</span>
+        </a>
+        <div id="nav-controls" class="nav-controls" style="display:none;">
+          <button class="btn btn-sm btn-ghost" id="prev-btn" onclick="navigateCreative(-1)" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            Previous
+          </button>
+          <span id="creative-counter" class="creative-counter">1 of 1</span>
+          <button class="btn btn-sm btn-ghost" id="next-btn" onclick="navigateCreative(1)" disabled>
+            Next
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Loading -->
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>Loading creative...</p>
+    </div>
+
+    <!-- Project Overview (when viewing /review/:projectId) -->
+    <div id="project-overview" class="main" style="display:none;">
+      <div class="section-header">
+        <div>
+          <h1 id="overview-project-name"></h1>
+          <p class="subtitle" id="overview-client-name"></p>
+        </div>
+      </div>
+
+      <div class="approval-progress" id="overview-progress">
+        <div class="progress-stats">
+          <span class="stat stat-approved"><span class="dot dot-approved"></span> <span id="ov-approved">0</span> Approved</span>
+          <span class="stat stat-pending"><span class="dot dot-pending"></span> <span id="ov-pending">0</span> Pending</span>
+          <span class="stat stat-revision"><span class="dot dot-revision"></span> <span id="ov-revision">0</span> Revisions</span>
+        </div>
+        <div class="progress-bar">
+          <div id="ov-progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="overview-grid" class="creatives-grid"></div>
+    </div>
+
+    <!-- Single Creative Review -->
+    <div id="review-content" class="review-layout" style="display:none;">
+      <!-- Media Panel -->
+      <div class="media-panel">
+        <div id="media-container" class="media-container">
+          <!-- Filled by JS -->
+        </div>
+        <div class="media-filename" id="media-filename"></div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="review-sidebar">
+        <!-- Status Banner -->
+        <div id="status-banner" class="status-banner status-pending">
+          <span id="status-icon"></span>
+          <span id="status-text">Pending Review</span>
+        </div>
+
+        <!-- Title & Caption -->
+        <div class="sidebar-section">
+          <h3>Title</h3>
+          <input type="text" id="creative-title" class="input-field" placeholder="Enter a title for this creative...">
+        </div>
+
+        <div class="sidebar-section">
+          <h3>Caption / Copy</h3>
+          <textarea id="creative-caption" class="input-field textarea" rows="3" placeholder="Enter caption, ad copy, or description..."></textarea>
+        </div>
+
+        <div class="sidebar-section save-row">
+          <button class="btn btn-outline btn-sm" onclick="saveDetails()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save Details
+          </button>
+        </div>
+
+        <!-- Approval Actions -->
+        <div class="sidebar-section">
+          <h3>Approval</h3>
+          <div class="approval-actions">
+            <button class="btn btn-approve" onclick="setStatus('approved')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Approve
+            </button>
+            <button class="btn btn-request-revision" onclick="setStatus('revision_requested')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+              Request Revision
+            </button>
+            <button class="btn btn-reset" onclick="setStatus('pending')">
+              Reset to Pending
+            </button>
+          </div>
+        </div>
+
+        <!-- Comments -->
+        <div class="sidebar-section comments-section">
+          <h3>
+            Comments
+            <span id="comment-count" class="comment-count-badge">0</span>
+          </h3>
+
+          <div id="comments-list" class="comments-list">
+            <!-- Filled by JS -->
+          </div>
+
+          <div class="comment-form">
+            <input type="text" id="comment-author" class="input-field" placeholder="Your name">
+            <textarea id="comment-text" class="input-field textarea" rows="2" placeholder="Leave a comment..."></textarea>
+            <button class="btn btn-primary btn-sm" onclick="addComment()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+              Post Comment
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast" style="display:none;"></div>
+  </div>
+
+  <script src="/js/review.js"></script>
+</body>
+</html>

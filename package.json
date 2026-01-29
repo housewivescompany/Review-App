@@ -1,0 +1,15 @@
+{
+  "name": "creative-approval-tool",
+  "version": "1.0.0",
+  "description": "A creative approval tool for digital agencies to manage client reviews on video, image, and other creative assets",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^9.0.0"
+  }
+}
