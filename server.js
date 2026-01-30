@@ -49,10 +49,10 @@ function createMailTransport() {
 // Middleware
 app.use(express.json());
 app.use(express.static('public'));
-app.use('/uploads', express.static('uploads'));
 
 // ─── Data Helpers ─────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, 'data');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
@@ -66,10 +66,15 @@ const DEFAULT_SETTINGS = {
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   if (!fs.existsSync(PROJECTS_FILE)) fs.writeFileSync(PROJECTS_FILE, '[]');
   if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]');
   if (!fs.existsSync(SETTINGS_FILE)) fs.writeFileSync(SETTINGS_FILE, JSON.stringify(DEFAULT_SETTINGS, null, 2));
 }
+
+// Serve uploads from inside data dir (persistent disk)
+ensureDataDir();
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 function readProjects() {
   ensureDataDir();
@@ -271,7 +276,7 @@ app.put('/api/settings', (req, res) => {
 // Logo upload
 const logoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, 'uploads', 'branding');
+    const dir = path.join(UPLOADS_DIR, 'branding');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -298,7 +303,7 @@ app.post('/api/settings/logo', logoUpload.single('logo'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const settings = readSettings();
   if (settings.logoUrl) {
-    const oldPath = path.join(__dirname, settings.logoUrl);
+    const oldPath = path.join(UPLOADS_DIR, settings.logoUrl.replace('/uploads/', ''));
     if (fs.existsSync(oldPath)) try { fs.unlinkSync(oldPath); } catch {}
   }
   settings.logoUrl = `/uploads/branding/${req.file.filename}`;
@@ -309,7 +314,7 @@ app.post('/api/settings/logo', logoUpload.single('logo'), (req, res) => {
 app.delete('/api/settings/logo', (req, res) => {
   const settings = readSettings();
   if (settings.logoUrl) {
-    const logoPath = path.join(__dirname, settings.logoUrl);
+    const logoPath = path.join(UPLOADS_DIR, settings.logoUrl.replace('/uploads/', ''));
     if (fs.existsSync(logoPath)) try { fs.unlinkSync(logoPath); } catch {}
   }
   settings.logoUrl = null;
@@ -321,7 +326,7 @@ app.delete('/api/settings/logo', (req, res) => {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const projectId = req.params.projectId;
-    const dir = path.join(__dirname, 'uploads', projectId);
+    const dir = path.join(UPLOADS_DIR, projectId);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -431,7 +436,7 @@ app.delete('/api/projects/:projectId', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Project not found' });
 
   // Remove uploaded files
-  const uploadDir = path.join(__dirname, 'uploads', req.params.projectId);
+  const uploadDir = path.join(UPLOADS_DIR, req.params.projectId);
   if (fs.existsSync(uploadDir)) {
     fs.rmSync(uploadDir, { recursive: true, force: true });
   }
@@ -529,7 +534,7 @@ app.delete('/api/projects/:projectId/creatives/:creativeId', (req, res) => {
 
   const creative = project.creatives[idx];
   // Remove the file
-  const filePath = path.join(__dirname, creative.filePath);
+  const filePath = path.join(UPLOADS_DIR, creative.filePath.replace('/uploads/', ''));
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
   project.creatives.splice(idx, 1);
