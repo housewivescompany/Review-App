@@ -55,11 +55,20 @@ app.use('/uploads', express.static('uploads'));
 const DATA_DIR = path.join(__dirname, 'data');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+const DEFAULT_SETTINGS = {
+  brandName: 'ReviewFlow',
+  logoUrl: null,
+  theme: 'dark',
+  accentColor: '#6366f1'
+};
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(PROJECTS_FILE)) fs.writeFileSync(PROJECTS_FILE, '[]');
   if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]');
+  if (!fs.existsSync(SETTINGS_FILE)) fs.writeFileSync(SETTINGS_FILE, JSON.stringify(DEFAULT_SETTINGS, null, 2));
 }
 
 function readProjects() {
@@ -80,6 +89,20 @@ function readUsers() {
 function writeUsers(users) {
   ensureDataDir();
   fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
+function readSettings() {
+  ensureDataDir();
+  try {
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8')) };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function writeSettings(settings) {
+  ensureDataDir();
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
 // ─── Auth Middleware ──────────────────────────────────────────
@@ -229,6 +252,71 @@ app.patch('/api/auth/me', optionalAuth, (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
 });
 
+// ─── Settings Routes ─────────────────────────────────────────
+
+app.get('/api/settings', (req, res) => {
+  res.json(readSettings());
+});
+
+app.put('/api/settings', (req, res) => {
+  const settings = readSettings();
+  const { brandName, theme, accentColor } = req.body;
+  if (brandName !== undefined) settings.brandName = (brandName.trim() || 'ReviewFlow');
+  if (theme !== undefined && ['dark', 'light'].includes(theme)) settings.theme = theme;
+  if (accentColor !== undefined && /^#[0-9a-fA-F]{6}$/.test(accentColor)) settings.accentColor = accentColor;
+  writeSettings(settings);
+  res.json(settings);
+});
+
+// Logo upload
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, 'uploads', 'branding');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `logo_${Date.now()}${ext}`);
+  }
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|gif|webp|svg)$/i;
+    if (allowed.test(path.extname(file.originalname))) {
+      cb(null, true);
+    } else {
+      cb(new Error('Logo must be an image file (JPG, PNG, GIF, WebP, or SVG)'), false);
+    }
+  }
+});
+
+app.post('/api/settings/logo', logoUpload.single('logo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const settings = readSettings();
+  if (settings.logoUrl) {
+    const oldPath = path.join(__dirname, settings.logoUrl);
+    if (fs.existsSync(oldPath)) try { fs.unlinkSync(oldPath); } catch {}
+  }
+  settings.logoUrl = `/uploads/branding/${req.file.filename}`;
+  writeSettings(settings);
+  res.json(settings);
+});
+
+app.delete('/api/settings/logo', (req, res) => {
+  const settings = readSettings();
+  if (settings.logoUrl) {
+    const logoPath = path.join(__dirname, settings.logoUrl);
+    if (fs.existsSync(logoPath)) try { fs.unlinkSync(logoPath); } catch {}
+  }
+  settings.logoUrl = null;
+  writeSettings(settings);
+  res.json(settings);
+});
+
 // Multer config for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -262,15 +350,17 @@ const upload = multer({
 
 // ─── API Routes ───────────────────────────────────────────────
 
-// Get all projects
+// Get all projects (filter by archived status)
 app.get('/api/projects', (req, res) => {
   const projects = readProjects();
-  // Return summary data (without full creative details)
-  const summaries = projects.map(p => ({
+  const showArchived = req.query.archived === 'true';
+  const filtered = projects.filter(p => showArchived ? p.archived === true : !p.archived);
+  const summaries = filtered.map(p => ({
     id: p.id,
     name: p.name,
     clientName: p.clientName,
     createdAt: p.createdAt,
+    archived: !!p.archived,
     creativeCount: p.creatives.length,
     approvedCount: p.creatives.filter(c => c.status === 'approved').length,
     pendingCount: p.creatives.filter(c => c.status === 'pending').length,
@@ -312,6 +402,21 @@ app.get('/api/projects/:projectId', (req, res) => {
   const projects = readProjects();
   const project = projects.find(p => p.id === req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
+  res.json(project);
+});
+
+// Update project (archive/unarchive, rename)
+app.patch('/api/projects/:projectId', (req, res) => {
+  const projects = readProjects();
+  const project = projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const { name, clientName, archived } = req.body;
+  if (name !== undefined) project.name = name.trim();
+  if (clientName !== undefined) project.clientName = clientName.trim();
+  if (archived !== undefined) project.archived = !!archived;
+
+  writeProjects(projects);
   res.json(project);
 });
 

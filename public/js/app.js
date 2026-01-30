@@ -1,21 +1,29 @@
 // ─── State ────────────────────────────────────────────────────
 let currentProjectId = null;
 let currentProject = null;
+let currentProjectTab = 'active';
+let appSettings = null;
+let archivedCount = 0;
 
 // ─── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  applyInstantSettings();
+  loadSettings();
   setupDragAndDrop();
   setupFileInput();
   setupModalKeys();
   setupClientAutocomplete();
+  setupLogoUpload();
   loadProjects();
   loadClientNames();
+  loadArchivedCount();
 });
 
 // ─── Projects List ────────────────────────────────────────────
 async function loadProjects() {
   try {
-    const res = await fetch('/api/projects');
+    const archived = currentProjectTab === 'archived';
+    const res = await fetch(`/api/projects?archived=${archived}`);
     const projects = await res.json();
     renderProjectsList(projects);
   } catch (err) {
@@ -23,12 +31,42 @@ async function loadProjects() {
   }
 }
 
+async function loadArchivedCount() {
+  try {
+    const res = await fetch('/api/projects?archived=true');
+    const projects = await res.json();
+    archivedCount = projects.length;
+    const el = document.getElementById('archived-tab-count');
+    if (el) el.textContent = archivedCount;
+  } catch {}
+}
+
+function switchProjectTab(tab) {
+  currentProjectTab = tab;
+  document.querySelectorAll('.project-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  loadProjects();
+}
+
 function renderProjectsList(projects) {
   const list = document.getElementById('projects-list');
   const empty = document.getElementById('empty-state');
 
+  // Update tab count
+  const countEl = document.getElementById(currentProjectTab === 'archived' ? 'archived-tab-count' : 'active-tab-count');
+  if (countEl) countEl.textContent = projects.length;
+
   if (projects.length === 0) {
     list.style.display = 'none';
+    if (currentProjectTab === 'archived') {
+      empty.querySelector('h2').textContent = 'No archived projects';
+      empty.querySelector('p').textContent = 'Completed projects you archive will appear here';
+      empty.querySelector('.btn')?.remove();
+    } else {
+      empty.querySelector('h2').textContent = 'No projects yet';
+      empty.querySelector('p').textContent = 'Create your first project to start collecting creative approvals';
+    }
     empty.style.display = 'flex';
     return;
   }
@@ -73,6 +111,7 @@ function showProjectsList() {
   currentProjectId = null;
   currentProject = null;
   loadProjects();
+  loadArchivedCount();
 }
 
 // ─── Single Project ───────────────────────────────────────────
@@ -96,6 +135,16 @@ function renderProjectView() {
   document.getElementById('project-breadcrumb-name').textContent = p.name;
   document.getElementById('project-title').textContent = p.name;
   document.getElementById('project-client').textContent = p.clientName ? `Client: ${p.clientName}` : '';
+
+  // Archive button label
+  const archiveBtn = document.getElementById('archive-btn');
+  if (archiveBtn) {
+    if (p.archived) {
+      archiveBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg> Unarchive`;
+    } else {
+      archiveBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg> Archive`;
+    }
+  }
 
   // Progress
   const total = p.creatives.length;
@@ -351,6 +400,7 @@ function setupModalKeys() {
     if (e.key === 'Escape') {
       hideNewProjectModal();
       hideDeleteModal();
+      closeSettings();
     }
     if (e.key === 'Enter') {
       const modal = document.getElementById('new-project-modal');
@@ -405,6 +455,191 @@ function setupClientAutocomplete() {
 function selectClientName(name) {
   document.getElementById('client-name-input').value = name;
   document.getElementById('client-suggestions').style.display = 'none';
+}
+
+// ─── Archive ──────────────────────────────────────────────────
+async function toggleArchiveProject() {
+  if (!currentProjectId || !currentProject) return;
+  const newArchived = !currentProject.archived;
+  try {
+    await fetch(`/api/projects/${currentProjectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived: newArchived })
+    });
+    showToast(newArchived ? 'Project archived' : 'Project unarchived');
+    showProjectsList();
+  } catch (err) {
+    showToast('Failed to update project', 'error');
+  }
+}
+
+// ─── Settings ─────────────────────────────────────────────────
+function applyInstantSettings() {
+  const savedTheme = localStorage.getItem('rf_theme');
+  const savedAccent = localStorage.getItem('rf_accent');
+  if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+  if (savedAccent) applyAccentColor(savedAccent);
+}
+
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    appSettings = await res.json();
+    applySettings(appSettings);
+  } catch { /* use defaults */ }
+}
+
+function applySettings(s) {
+  // Theme
+  document.documentElement.setAttribute('data-theme', s.theme || 'dark');
+  localStorage.setItem('rf_theme', s.theme || 'dark');
+
+  // Accent color
+  if (s.accentColor) {
+    applyAccentColor(s.accentColor);
+    localStorage.setItem('rf_accent', s.accentColor);
+  }
+
+  // Brand name
+  const brandEl = document.getElementById('brand-name');
+  if (brandEl) brandEl.textContent = s.brandName || 'ReviewFlow';
+  document.title = s.brandName || 'Creative Approval Tool';
+
+  // Logo
+  const defaultIcon = document.getElementById('logo-default-icon');
+  const customImg = document.getElementById('logo-custom-img');
+  if (s.logoUrl && customImg) {
+    customImg.src = s.logoUrl;
+    customImg.style.display = 'block';
+    if (defaultIcon) defaultIcon.style.display = 'none';
+  } else if (customImg) {
+    customImg.style.display = 'none';
+    if (defaultIcon) defaultIcon.style.display = 'block';
+  }
+}
+
+function applyAccentColor(color) {
+  document.documentElement.style.setProperty('--accent', color);
+  // Generate hover variant (lighter)
+  const r = parseInt(color.slice(1,3), 16);
+  const g = parseInt(color.slice(3,5), 16);
+  const b = parseInt(color.slice(5,7), 16);
+  const lighter = `rgb(${Math.min(r+30,255)}, ${Math.min(g+30,255)}, ${Math.min(b+30,255)})`;
+  document.documentElement.style.setProperty('--accent-hover', lighter);
+  document.documentElement.style.setProperty('--accent-bg', `rgba(${r}, ${g}, ${b}, 0.1)`);
+}
+
+function openSettings() {
+  const modal = document.getElementById('settings-modal');
+  if (!appSettings) return;
+
+  // Populate fields
+  document.getElementById('settings-brand-name').value = appSettings.brandName || 'ReviewFlow';
+
+  // Theme buttons
+  document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === (appSettings.theme || 'dark'));
+  });
+
+  // Color swatches
+  const color = appSettings.accentColor || '#6366f1';
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === color);
+  });
+  document.getElementById('custom-color-picker').value = color;
+
+  // Logo preview
+  updateSettingsLogoPreview();
+
+  modal.style.display = 'flex';
+}
+
+function closeSettings() {
+  // Save brand name on close
+  const nameInput = document.getElementById('settings-brand-name');
+  if (appSettings && nameInput.value.trim() !== appSettings.brandName) {
+    saveSettingsField({ brandName: nameInput.value.trim() });
+  }
+  document.getElementById('settings-modal').style.display = 'none';
+}
+
+function updateSettingsLogoPreview() {
+  const defaultEl = document.getElementById('settings-logo-default');
+  const imgEl = document.getElementById('settings-logo-img');
+  const removeBtn = document.getElementById('remove-logo-btn');
+
+  if (appSettings.logoUrl) {
+    imgEl.src = appSettings.logoUrl;
+    imgEl.style.display = 'block';
+    defaultEl.style.display = 'none';
+    removeBtn.style.display = 'inline-flex';
+  } else {
+    imgEl.style.display = 'none';
+    defaultEl.style.display = 'flex';
+    removeBtn.style.display = 'none';
+  }
+}
+
+async function saveSettingsField(updates) {
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    appSettings = await res.json();
+    applySettings(appSettings);
+  } catch {
+    showToast('Failed to save settings', 'error');
+  }
+}
+
+function setTheme(theme) {
+  document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === theme);
+  });
+  saveSettingsField({ theme });
+}
+
+function setAccentColor(color) {
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === color);
+  });
+  document.getElementById('custom-color-picker').value = color;
+  saveSettingsField({ accentColor: color });
+}
+
+function setupLogoUpload() {
+  const input = document.getElementById('logo-file-input');
+  if (!input) return;
+  input.addEventListener('change', async () => {
+    if (!input.files.length) return;
+    const formData = new FormData();
+    formData.append('logo', input.files[0]);
+    try {
+      const res = await fetch('/api/settings/logo', { method: 'POST', body: formData });
+      appSettings = await res.json();
+      applySettings(appSettings);
+      updateSettingsLogoPreview();
+      showToast('Logo updated!');
+    } catch {
+      showToast('Failed to upload logo', 'error');
+    }
+    input.value = '';
+  });
+}
+
+async function removeLogo() {
+  try {
+    const res = await fetch('/api/settings/logo', { method: 'DELETE' });
+    appSettings = await res.json();
+    applySettings(appSettings);
+    updateSettingsLogoPreview();
+    showToast('Logo removed');
+  } catch {
+    showToast('Failed to remove logo', 'error');
+  }
 }
 
 // ─── Utilities ────────────────────────────────────────────────

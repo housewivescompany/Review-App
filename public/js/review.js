@@ -191,10 +191,60 @@ function checkIdentity() {
 
 // ─── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  applyInstantSettings();
+  loadAppSettings();
   parseUrl();
   setupKeyboardNav();
   setupModalKeys();
 });
+
+// ─── Settings (read-only on review page) ─────────────────────
+function applyInstantSettings() {
+  const savedTheme = localStorage.getItem('rf_theme');
+  const savedAccent = localStorage.getItem('rf_accent');
+  if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+  if (savedAccent) {
+    document.documentElement.style.setProperty('--accent', savedAccent);
+    const r = parseInt(savedAccent.slice(1,3), 16);
+    const g = parseInt(savedAccent.slice(3,5), 16);
+    const b = parseInt(savedAccent.slice(5,7), 16);
+    document.documentElement.style.setProperty('--accent-hover', `rgb(${Math.min(r+30,255)}, ${Math.min(g+30,255)}, ${Math.min(b+30,255)})`);
+    document.documentElement.style.setProperty('--accent-bg', `rgba(${r}, ${g}, ${b}, 0.1)`);
+  }
+}
+
+async function loadAppSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const s = await res.json();
+
+    // Theme
+    document.documentElement.setAttribute('data-theme', s.theme || 'dark');
+
+    // Accent
+    if (s.accentColor) {
+      const r = parseInt(s.accentColor.slice(1,3), 16);
+      const g = parseInt(s.accentColor.slice(3,5), 16);
+      const b = parseInt(s.accentColor.slice(5,7), 16);
+      document.documentElement.style.setProperty('--accent', s.accentColor);
+      document.documentElement.style.setProperty('--accent-hover', `rgb(${Math.min(r+30,255)}, ${Math.min(g+30,255)}, ${Math.min(b+30,255)})`);
+      document.documentElement.style.setProperty('--accent-bg', `rgba(${r}, ${g}, ${b}, 0.1)`);
+    }
+
+    // Brand name
+    const brandEl = document.getElementById('brand-name');
+    if (brandEl) brandEl.textContent = s.brandName || 'ReviewFlow';
+
+    // Logo
+    const defaultIcon = document.getElementById('logo-default-icon');
+    const customImg = document.getElementById('logo-custom-img');
+    if (s.logoUrl && customImg) {
+      customImg.src = s.logoUrl;
+      customImg.style.display = 'block';
+      if (defaultIcon) defaultIcon.style.display = 'none';
+    }
+  } catch { /* use defaults */ }
+}
 
 function parseUrl() {
   const parts = window.location.pathname.split('/').filter(Boolean);
