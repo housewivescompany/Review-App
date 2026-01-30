@@ -4,8 +4,10 @@ let creativeId = null;
 let project = null;
 let creative = null;
 let creativeIndex = -1;
+let currentAuthTab = 'signin';
+let devToken = null;
 
-// ─── Identity ─────────────────────────────────────────────────
+// ─── Identity & Auth ──────────────────────────────────────────
 function getIdentity() {
   try {
     const data = localStorage.getItem('reviewflow_identity');
@@ -13,44 +15,167 @@ function getIdentity() {
   } catch { return null; }
 }
 
-function setIdentity(name, email) {
-  localStorage.setItem('reviewflow_identity', JSON.stringify({ name, email }));
+function setIdentity(name, email, userId) {
+  const data = { name };
+  if (email) data.email = email;
+  if (userId) data.userId = userId;
+  localStorage.setItem('reviewflow_identity', JSON.stringify(data));
+}
+
+function getToken() {
+  return localStorage.getItem('reviewflow_token');
+}
+
+function isSignedIn() {
+  const token = getToken();
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch { return false; }
 }
 
 function showIdentityModal() {
   const modal = document.getElementById('identity-modal');
+  const closeBtn = document.getElementById('identity-close-btn');
   const identity = getIdentity();
+
+  // Show close button if already has identity (changing, not first visit)
+  closeBtn.style.display = identity && identity.name ? 'block' : 'none';
+
+  // Pre-fill
   if (identity) {
     document.getElementById('identity-name').value = identity.name || '';
-    document.getElementById('identity-email').value = identity.email || '';
+    if (identity.email) document.getElementById('signin-email').value = identity.email;
+    if (identity.name) document.getElementById('signin-name').value = identity.name;
   }
+
+  // Reset state
+  document.getElementById('magic-link-sent').style.display = 'none';
+  document.getElementById('auth-submit-btn').style.display = '';
+  devToken = null;
+
+  // Default to signin tab
+  switchAuthTab(isSignedIn() ? 'guest' : 'signin');
+
   modal.style.display = 'flex';
-  setTimeout(() => document.getElementById('identity-name').focus(), 100);
+  setTimeout(() => {
+    const firstInput = currentAuthTab === 'signin'
+      ? document.getElementById('signin-email')
+      : document.getElementById('identity-name');
+    firstInput.focus();
+  }, 100);
 }
 
 function hideIdentityModal() {
   document.getElementById('identity-modal').style.display = 'none';
 }
 
-function saveIdentity() {
-  const name = document.getElementById('identity-name').value.trim();
-  if (!name) {
-    showToast('Please enter your name', 'error');
-    return;
+function switchAuthTab(tab) {
+  currentAuthTab = tab;
+  document.getElementById('tab-signin').classList.toggle('active', tab === 'signin');
+  document.getElementById('tab-guest').classList.toggle('active', tab === 'guest');
+  document.getElementById('auth-signin').style.display = tab === 'signin' ? 'block' : 'none';
+  document.getElementById('auth-guest').style.display = tab === 'guest' ? 'block' : 'none';
+  document.getElementById('auth-submit-btn').textContent = tab === 'signin' ? 'Send Sign-In Link' : 'Continue as Guest';
+
+  // Reset magic link sent state when switching tabs
+  document.getElementById('magic-link-sent').style.display = 'none';
+  document.getElementById('auth-submit-btn').style.display = '';
+}
+
+async function submitAuth() {
+  if (currentAuthTab === 'guest') {
+    // Guest mode
+    const name = document.getElementById('identity-name').value.trim();
+    if (!name) {
+      showToast('Please enter your name', 'error');
+      return;
+    }
+    setIdentity(name);
+    localStorage.removeItem('reviewflow_token');
+    hideIdentityModal();
+    updateIdentityDisplay();
+  } else {
+    // Magic link sign in
+    const email = document.getElementById('signin-email').value.trim();
+    const name = document.getElementById('signin-name').value.trim();
+    if (!email) {
+      showToast('Please enter your email', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name })
+      });
+      const data = await res.json();
+
+      // Save redirect URL so after verification we come back here
+      localStorage.setItem('reviewflow_redirect', window.location.href);
+
+      // Show "check your email" message
+      document.getElementById('magic-link-sent').style.display = 'flex';
+      document.getElementById('auth-submit-btn').style.display = 'none';
+
+      // Dev mode: show direct sign-in button
+      if (data.devToken) {
+        devToken = data.devToken;
+        document.getElementById('dev-token-hint').style.display = 'block';
+      }
+    } catch (err) {
+      showToast('Failed to send sign-in link', 'error');
+    }
   }
-  const email = document.getElementById('identity-email').value.trim();
-  setIdentity(name, email);
-  hideIdentityModal();
+}
+
+async function useDevToken() {
+  if (!devToken) return;
+  try {
+    const res = await fetch('/api/auth/verify-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: devToken })
+    });
+    const data = await res.json();
+    if (data.token && data.user) {
+      localStorage.setItem('reviewflow_token', data.token);
+      setIdentity(data.user.name, data.user.email, data.user.id);
+      hideIdentityModal();
+      updateIdentityDisplay();
+      showToast(`Signed in as ${data.user.name}`);
+    }
+  } catch (err) {
+    showToast('Sign in failed', 'error');
+  }
+}
+
+function signOut() {
+  localStorage.removeItem('reviewflow_token');
+  localStorage.removeItem('reviewflow_identity');
   updateIdentityDisplay();
+  showIdentityModal();
 }
 
 function updateIdentityDisplay() {
   const identity = getIdentity();
   const el = document.getElementById('commenting-as');
+  const signoutBtn = document.getElementById('signout-btn');
+  const signed = isSignedIn();
+
   if (identity && identity.name) {
     el.textContent = `Commenting as ${identity.name}`;
+    if (signed) {
+      el.textContent += ' (signed in)';
+      signoutBtn.style.display = 'inline';
+    } else {
+      signoutBtn.style.display = 'none';
+    }
   } else {
     el.textContent = 'Anonymous';
+    signoutBtn.style.display = 'none';
   }
 }
 
@@ -66,7 +191,7 @@ function checkIdentity() {
 document.addEventListener('DOMContentLoaded', () => {
   parseUrl();
   setupKeyboardNav();
-  setupIdentityKeys();
+  setupModalKeys();
 });
 
 function parseUrl() {
@@ -391,12 +516,19 @@ function setupKeyboardNav() {
   });
 }
 
-function setupIdentityKeys() {
+function setupModalKeys() {
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      const identity = getIdentity();
+      if (identity && identity.name) hideIdentityModal();
+    }
     if (e.key === 'Enter') {
       const modal = document.getElementById('identity-modal');
       if (modal && modal.style.display === 'flex') {
-        saveIdentity();
+        // Don't submit if magic link was already sent
+        if (document.getElementById('auth-submit-btn').style.display !== 'none') {
+          submitAuth();
+        }
       }
     }
   });

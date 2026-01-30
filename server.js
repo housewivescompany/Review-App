@@ -3,22 +3,52 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// JWT secret - use env var in production
+const JWT_SECRET = process.env.JWT_SECRET || 'reviewflow-dev-secret-change-in-prod';
+const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+
+// ─── Email Config ────────────────────────────────────────────
+// Configure via .env file:
+//   SMTP_HOST=smtp.gmail.com
+//   SMTP_PORT=587
+//   SMTP_USER=you@gmail.com
+//   SMTP_PASS=your-app-password
+//   SMTP_FROM=ReviewFlow <you@gmail.com>
+function createMailTransport() {
+  if (process.env.SMTP_HOST) {
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+  }
+  return null;
+}
 
 // Middleware
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
 
-// Data helpers
+// ─── Data Helpers ─────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, 'data');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(PROJECTS_FILE)) fs.writeFileSync(PROJECTS_FILE, '[]');
+  if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]');
 }
 
 function readProjects() {
@@ -30,6 +60,160 @@ function writeProjects(projects) {
   ensureDataDir();
   fs.writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2));
 }
+
+function readUsers() {
+  ensureDataDir();
+  return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+}
+
+function writeUsers(users) {
+  ensureDataDir();
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
+// ─── Auth Middleware ──────────────────────────────────────────
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const token = authHeader.slice(7);
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch { /* token invalid, continue as guest */ }
+  }
+  next();
+}
+
+// ─── Auth Routes ─────────────────────────────────────────────
+
+// Request magic link
+app.post('/api/auth/magic-link', async (req, res) => {
+  const { email, name } = req.body;
+  if (!email || !email.trim()) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  const emailNorm = email.trim().toLowerCase();
+  const users = readUsers();
+  let user = users.find(u => u.email === emailNorm);
+
+  if (!user) {
+    // Create new user
+    user = {
+      id: uuidv4(),
+      email: emailNorm,
+      name: (name || email.split('@')[0]).trim(),
+      createdAt: new Date().toISOString()
+    };
+    users.push(user);
+    writeUsers(users);
+  } else if (name && name.trim()) {
+    // Update name if provided
+    user.name = name.trim();
+    writeUsers(users);
+  }
+
+  // Generate magic link token (valid 15 min)
+  const token = jwt.sign({ userId: user.id, email: emailNorm }, JWT_SECRET, { expiresIn: '15m' });
+  const magicLink = `${BASE_URL}/auth/verify?token=${token}`;
+
+  // Try to send email
+  const transport = createMailTransport();
+  if (transport) {
+    try {
+      await transport.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: emailNorm,
+        subject: 'Sign in to ReviewFlow',
+        html: `
+          <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+            <h2 style="margin-bottom: 16px;">Sign in to ReviewFlow</h2>
+            <p style="color: #666; margin-bottom: 24px;">Click the button below to sign in. This link expires in 15 minutes.</p>
+            <a href="${magicLink}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Sign In</a>
+            <p style="color: #999; font-size: 13px; margin-top: 24px;">If you didn't request this, you can safely ignore this email.</p>
+          </div>
+        `
+      });
+      res.json({ success: true, message: 'Magic link sent! Check your email.' });
+    } catch (err) {
+      console.error('Email send error:', err.message);
+      // Fall back to returning token directly in dev
+      res.json({ success: true, message: 'Magic link sent! Check your email.', devToken: process.env.NODE_ENV !== 'production' ? token : undefined });
+    }
+  } else {
+    // No email configured - return token directly (dev mode)
+    console.log(`\n  Magic link for ${emailNorm}:\n  ${magicLink}\n`);
+    res.json({ success: true, message: 'Email not configured. Check the server console for the magic link.', devToken: token });
+  }
+});
+
+// Verify magic link token (browser redirect)
+app.get('/auth/verify', (req, res) => {
+  const { token } = req.query;
+  // Serve a tiny HTML page that stores the token and redirects
+  res.send(`
+    <!DOCTYPE html>
+    <html><head><title>Signing in...</title></head>
+    <body>
+      <p>Signing you in...</p>
+      <script>
+        try {
+          var payload = JSON.parse(atob('${token}'.split('.')[1]));
+          localStorage.setItem('reviewflow_token', '${token}');
+          localStorage.setItem('reviewflow_identity', JSON.stringify({
+            name: payload.name || '',
+            email: payload.email || '',
+            userId: payload.userId || ''
+          }));
+        } catch(e) {}
+        // Redirect to where they came from, or home
+        var redirect = localStorage.getItem('reviewflow_redirect') || '/';
+        localStorage.removeItem('reviewflow_redirect');
+        window.location.href = redirect;
+      </script>
+    </body></html>
+  `);
+});
+
+// Verify token via API (for JS clients)
+app.post('/api/auth/verify-token', (req, res) => {
+  const { token } = req.body;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    // Issue a long-lived session token (30 days)
+    const users = readUsers();
+    const user = users.find(u => u.id === payload.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    const sessionToken = jwt.sign({ userId: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token: sessionToken, user: { id: user.id, name: user.name, email: user.email } });
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
+// Get current user from token
+app.get('/api/auth/me', optionalAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Not signed in' });
+  const users = readUsers();
+  const user = users.find(u => u.id === req.user.userId);
+  if (!user) return res.status(401).json({ error: 'User not found' });
+  res.json({ id: user.id, name: user.name, email: user.email });
+});
+
+// Update user profile
+app.patch('/api/auth/me', optionalAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Not signed in' });
+  const users = readUsers();
+  const user = users.find(u => u.id === req.user.userId);
+  if (!user) return res.status(401).json({ error: 'User not found' });
+
+  if (req.body.name) user.name = req.body.name.trim();
+  writeUsers(users);
+
+  // Issue updated token
+  const token = jwt.sign({ userId: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+});
 
 // Multer config for file uploads
 const storage = multer.diskStorage({

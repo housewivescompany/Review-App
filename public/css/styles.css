@@ -897,6 +897,83 @@ img.media-content {
   font-size: 0.78rem;
 }
 
+.identity-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ─── Auth Tabs ───────────────────────────────────────────── */
+.auth-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+
+.auth-tab:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.auth-tab.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.auth-tab:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+.auth-panel {
+  min-height: 120px;
+}
+
+.auth-desc {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.magic-link-sent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 16px 0;
+  color: var(--green);
+}
+
+.magic-link-sent svg {
+  opacity: 0.8;
+}
+
+.magic-link-sent p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.auth-hint {
+  font-size: 0.78rem !important;
+  color: var(--text-muted) !important;
+  margin-top: 4px;
+}
+
 /* ─── Client Name Suggestions ─────────────────────────────── */
 .suggestions-wrapper {
   position: relative;
