@@ -48,13 +48,17 @@ function showIdentityModal() {
   // Pre-fill
   if (identity) {
     document.getElementById('identity-name').value = identity.name || '';
-    if (identity.email) document.getElementById('signin-email').value = identity.email;
-    if (identity.name) document.getElementById('signin-name').value = identity.name;
+    const signinEmail = document.getElementById('signin-email');
+    const signinName = document.getElementById('signin-name');
+    if (identity.email && signinEmail) signinEmail.value = identity.email;
+    if (identity.name && signinName) signinName.value = identity.name;
   }
 
-  // Reset state
-  document.getElementById('magic-link-sent').style.display = 'none';
-  document.getElementById('auth-submit-btn').style.display = '';
+  // Reset state (guard for guest-only mode where these elements don't exist)
+  const magicLinkSent = document.getElementById('magic-link-sent');
+  if (magicLinkSent) magicLinkSent.style.display = 'none';
+  const submitBtn = document.getElementById('auth-submit-btn');
+  if (submitBtn) submitBtn.style.display = '';
   devToken = null;
 
   // Default to guest mode
@@ -291,8 +295,6 @@ function renderProjectOverview() {
   // Logo links back to project overview, not dashboard
   document.getElementById('logo-link').href = `/review/${projectId}`;
 
-  checkIdentity();
-
   document.getElementById('overview-project-name').textContent = project.name;
   document.getElementById('overview-client-name').textContent =
     project.clientName ? `Client: ${project.clientName}` : '';
@@ -355,6 +357,9 @@ function renderProjectOverview() {
       </a>
     `;
   }).join('');
+
+  // Ask for identity after rendering (so page always displays even if modal has issues)
+  checkIdentity();
 }
 
 // ─── Single Creative Review ──────────────────────────────────
@@ -384,8 +389,6 @@ function renderCreativeReview() {
 
   // Logo links back to project overview, not dashboard
   document.getElementById('logo-link').href = `/review/${projectId}`;
-
-  checkIdentity();
 
   // Navigation controls (header + media arrows)
   const navControls = document.getElementById('nav-controls');
@@ -434,6 +437,9 @@ function renderCreativeReview() {
 
   // Version section (admin only)
   showVersionSection();
+
+  // Ask for identity after rendering (so page always displays even if modal has issues)
+  checkIdentity();
 }
 
 function renderMedia() {
@@ -445,13 +451,28 @@ function renderMedia() {
         <source src="${creative.filePath}" type="${creative.mimeType}">
         Your browser does not support video playback.
       </video>`;
+    container.querySelector('video').addEventListener('error', () => showMediaError(container));
   } else if (creative.mediaType === 'pdf') {
     container.innerHTML = `
       <iframe src="${creative.filePath}" class="media-content media-pdf" title="PDF Preview"></iframe>`;
   } else {
     container.innerHTML = `
       <img src="${creative.filePath}" alt="${escapeHtml(creative.originalName)}" class="media-content">`;
+    container.querySelector('img').addEventListener('error', () => showMediaError(container));
   }
+}
+
+function showMediaError(container) {
+  container.innerHTML = `
+    <div class="media-error">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+        <polyline points="21 15 16 10 5 21"></polyline>
+      </svg>
+      <p>File not found</p>
+      <span>This file may need to be re-uploaded.</span>
+    </div>`;
 }
 
 function updateStatusBanner() {
