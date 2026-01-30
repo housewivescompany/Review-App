@@ -77,6 +77,7 @@ function renderProjectsList(projects) {
   list.innerHTML = projects.map(p => {
     const total = p.creativeCount;
     const pct = total > 0 ? Math.round((p.approvedCount / total) * 100) : 0;
+    const isArchived = currentProjectTab === 'archived';
     return `
       <div class="project-card" onclick="openProject('${p.id}')">
         <div class="project-card-header">
@@ -99,6 +100,14 @@ function renderProjectsList(projects) {
             ${p.pendingCount > 0 ? `<span class="mini-dot dot-pending" title="${p.pendingCount} pending"></span>` : ''}
             ${p.revisionCount > 0 ? `<span class="mini-dot dot-revision" title="${p.revisionCount} need revision"></span>` : ''}
           </div>
+        </div>
+        <div class="project-card-actions" onclick="event.stopPropagation()">
+          <button class="card-action-btn" onclick="archiveFromCard('${p.id}', ${!isArchived})" title="${isArchived ? 'Unarchive' : 'Archive'}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+          </button>
+          <button class="card-action-btn card-action-danger" onclick="deleteFromCard('${p.id}', '${escapeHtml(p.name)}')" title="Delete">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
         </div>
       </div>
     `;
@@ -458,6 +467,34 @@ function selectClientName(name) {
 }
 
 // ─── Archive ──────────────────────────────────────────────────
+async function archiveFromCard(projectId, archive) {
+  try {
+    await fetch(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived: archive })
+    });
+    showToast(archive ? 'Project archived' : 'Project unarchived');
+    loadProjects();
+    loadArchivedCount();
+  } catch {
+    showToast('Failed to update project', 'error');
+  }
+}
+
+async function deleteFromCard(projectId, projectName) {
+  if (!confirm(`Delete "${projectName}"? This will permanently remove the project and all its files.`)) return;
+  try {
+    const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error();
+    showToast('Project deleted');
+    loadProjects();
+    loadArchivedCount();
+  } catch {
+    showToast('Failed to delete project', 'error');
+  }
+}
+
 async function toggleArchiveProject() {
   if (!currentProjectId || !currentProject) return;
   const newArchived = !currentProject.archived;

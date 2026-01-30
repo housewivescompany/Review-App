@@ -1443,9 +1443,10 @@ img.media-content {
 
 /* Custom logo in header */
 .logo-img {
-  width: 28px;
-  height: 28px;
+  height: 40px;
+  width: 150px;
   object-fit: contain;
+  object-position: left;
   border-radius: 4px;
 }
 
@@ -1504,4 +1505,45 @@ img.media-content {
   font-size: 0.72rem;
   padding: 2px 8px;
   border-radius: 100px;
+}
+
+/* ─── Project Card Actions ───────────────────────────────── */
+.project-card-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.project-card:hover .project-card-actions {
+  opacity: 1;
+}
+
+.card-action-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.card-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-light);
+}
+
+.card-action-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
 }
