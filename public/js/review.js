@@ -4,8 +4,10 @@ let creativeId = null;
 let project = null;
 let creative = null;
 let creativeIndex = -1;
-let currentAuthTab = 'signin';
+let currentAuthTab = 'guest';
 let devToken = null;
+let savedTitle = '';
+let savedCaption = '';
 
 // ─── Identity & Auth ──────────────────────────────────────────
 function getIdentity() {
@@ -55,15 +57,12 @@ function showIdentityModal() {
   document.getElementById('auth-submit-btn').style.display = '';
   devToken = null;
 
-  // Default to signin tab
-  switchAuthTab(isSignedIn() ? 'guest' : 'signin');
+  // Default to guest mode
+  currentAuthTab = 'guest';
 
   modal.style.display = 'flex';
   setTimeout(() => {
-    const firstInput = currentAuthTab === 'signin'
-      ? document.getElementById('signin-email')
-      : document.getElementById('identity-name');
-    firstInput.focus();
+    document.getElementById('identity-name').focus();
   }, 100);
 }
 
@@ -235,13 +234,15 @@ async function loadAppSettings() {
     const brandEl = document.getElementById('brand-name');
     if (brandEl) brandEl.textContent = s.brandName || 'ReviewFlow';
 
-    // Logo
+    // Logo — hide brand text when custom logo is set
     const defaultIcon = document.getElementById('logo-default-icon');
     const customImg = document.getElementById('logo-custom-img');
+    const brandText = document.getElementById('brand-name');
     if (s.logoUrl && customImg) {
       customImg.src = s.logoUrl;
       customImg.style.display = 'block';
       if (defaultIcon) defaultIcon.style.display = 'none';
+      if (brandText) brandText.style.display = 'none';
     }
   } catch { /* use defaults */ }
 }
@@ -376,14 +377,31 @@ function renderCreativeReview() {
 
   checkIdentity();
 
-  // Navigation controls
+  // Navigation controls (header + media arrows)
   const navControls = document.getElementById('nav-controls');
+  const mediaPrev = document.getElementById('media-prev-btn');
+  const mediaNext = document.getElementById('media-next-btn');
   if (project.creatives.length > 1) {
     navControls.style.display = 'flex';
     document.getElementById('creative-counter').textContent =
       `${creativeIndex + 1} of ${project.creatives.length}`;
     document.getElementById('prev-btn').disabled = creativeIndex === 0;
     document.getElementById('next-btn').disabled = creativeIndex === project.creatives.length - 1;
+    // Media panel arrows
+    if (creativeIndex > 0) mediaPrev.style.display = 'flex';
+    if (creativeIndex < project.creatives.length - 1) mediaNext.style.display = 'flex';
+  }
+
+  // Back to all creatives link
+  const backLink = document.getElementById('back-to-all');
+  if (backLink) {
+    backLink.href = `/review/${projectId}`;
+    backLink.style.display = 'inline-flex';
+    backLink.onclick = (e) => {
+      if (hasUnsavedChanges() && !confirm('You have unsaved changes. Leave without saving?')) {
+        e.preventDefault();
+      }
+    };
   }
 
   // Media
@@ -398,6 +416,8 @@ function renderCreativeReview() {
   // Title & Caption
   document.getElementById('creative-title').value = creative.title || '';
   document.getElementById('creative-caption').value = creative.caption || '';
+  savedTitle = creative.title || '';
+  savedCaption = creative.caption || '';
 
   // Comments
   renderComments();
@@ -455,10 +475,19 @@ async function saveDetails() {
       body: JSON.stringify({ title, caption })
     });
     creative = await res.json();
+    savedTitle = creative.title || '';
+    savedCaption = creative.caption || '';
     showToast('Details saved!');
   } catch (err) {
     showToast('Failed to save', 'error');
   }
+}
+
+function hasUnsavedChanges() {
+  if (!creative) return false;
+  const currentTitle = document.getElementById('creative-title')?.value || '';
+  const currentCaption = document.getElementById('creative-caption')?.value || '';
+  return currentTitle !== savedTitle || currentCaption !== savedCaption;
 }
 
 async function setStatus(status) {
@@ -554,9 +583,20 @@ async function deleteComment(commentId) {
 function navigateCreative(direction) {
   const newIndex = creativeIndex + direction;
   if (newIndex < 0 || newIndex >= project.creatives.length) return;
+  if (hasUnsavedChanges()) {
+    if (!confirm('You have unsaved changes. Leave without saving?')) return;
+  }
   const nextCreative = project.creatives[newIndex];
   window.location.href = `/review/${projectId}/${nextCreative.id}`;
 }
+
+// Warn on browser navigation/close with unsaved changes
+window.addEventListener('beforeunload', (e) => {
+  if (hasUnsavedChanges()) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 function setupKeyboardNav() {
   document.addEventListener('keydown', e => {

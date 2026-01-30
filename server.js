@@ -364,7 +364,11 @@ app.get('/api/projects', (req, res) => {
     creativeCount: p.creatives.length,
     approvedCount: p.creatives.filter(c => c.status === 'approved').length,
     pendingCount: p.creatives.filter(c => c.status === 'pending').length,
-    revisionCount: p.creatives.filter(c => c.status === 'revision_requested').length
+    revisionCount: p.creatives.filter(c => c.status === 'revision_requested').length,
+    thumbnails: p.creatives.slice(0, 4).map(c => ({
+      filePath: c.filePath,
+      mediaType: c.mediaType
+    }))
   }));
   res.json(summaries);
 });

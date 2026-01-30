@@ -18,7 +18,7 @@
             <path d="M2 12l10 5 10-5"></path>
           </svg>
           <img id="logo-custom-img" class="logo-img" style="display:none;" alt="Logo">
-          <span id="brand-name">ReviewFlow</span>
+          <span id="brand-name" class="brand-name-text">ReviewFlow</span>
         </a>
         <div id="nav-controls" class="nav-controls" style="display:none;">
           <button class="btn btn-sm btn-ghost" id="prev-btn" onclick="navigateCreative(-1)" disabled>
@@ -67,14 +67,25 @@
     <div id="review-content" class="review-layout" style="display:none;">
       <!-- Media Panel -->
       <div class="media-panel">
+        <button class="media-nav-arrow media-nav-left" id="media-prev-btn" onclick="navigateCreative(-1)" style="display:none;" title="Previous">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
         <div id="media-container" class="media-container">
           <!-- Filled by JS -->
         </div>
+        <button class="media-nav-arrow media-nav-right" id="media-next-btn" onclick="navigateCreative(1)" style="display:none;" title="Next">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
         <div class="media-filename" id="media-filename"></div>
       </div>
 
       <!-- Sidebar -->
       <div class="review-sidebar">
+        <!-- Back to all -->
+        <a id="back-to-all" class="back-to-all" href="#" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          View All Creatives
+        </a>
         <!-- Status Banner -->
         <div id="status-banner" class="status-banner status-pending">
           <span id="status-icon"></span>
@@ -154,32 +165,8 @@
           <button class="close-btn" id="identity-close-btn" onclick="hideIdentityModal()" style="display:none;">&times;</button>
         </div>
         <div class="modal-body">
-          <!-- Tab Switcher -->
-          <div class="auth-tabs">
-            <button class="auth-tab active" id="tab-signin" onclick="switchAuthTab('signin')">Sign In</button>
-            <button class="auth-tab" id="tab-guest" onclick="switchAuthTab('guest')">Continue as Guest</button>
-          </div>
-
-          <!-- Sign In Tab -->
-          <div id="auth-signin" class="auth-panel">
-            <p class="auth-desc">Sign in with your email to keep your identity across sessions.</p>
-            <div class="form-group">
-              <label for="signin-email">Email *</label>
-              <input type="email" id="signin-email" class="input-field" placeholder="e.g., sarah@acme.com">
-            </div>
-            <div class="form-group">
-              <label for="signin-name">Your Name</label>
-              <input type="text" id="signin-name" class="input-field" placeholder="e.g., Sarah Johnson">
-            </div>
-            <div id="magic-link-sent" class="magic-link-sent" style="display:none;">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-              <p>Check your email for a sign-in link!</p>
-              <p class="auth-hint" id="dev-token-hint" style="display:none;">Dev mode: <button class="link-btn" id="dev-token-btn" onclick="useDevToken()">Click here to sign in directly</button></p>
-            </div>
-          </div>
-
-          <!-- Guest Tab -->
-          <div id="auth-guest" class="auth-panel" style="display:none;">
+          <!-- Guest-only mode (email sign-in hidden for now) -->
+          <div id="auth-guest" class="auth-panel">
             <p class="auth-desc">Enter your name to comment. Your identity is saved on this device only.</p>
             <div class="form-group">
               <label for="identity-name">Your Name *</label>
@@ -188,7 +175,7 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary" id="auth-submit-btn" onclick="submitAuth()">Send Sign-In Link</button>
+          <button class="btn btn-primary" id="auth-submit-btn" onclick="submitAuth()">Continue</button>
         </div>
       </div>
     </div>

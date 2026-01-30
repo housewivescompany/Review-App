@@ -78,8 +78,25 @@ function renderProjectsList(projects) {
     const total = p.creativeCount;
     const pct = total > 0 ? Math.round((p.approvedCount / total) * 100) : 0;
     const isArchived = currentProjectTab === 'archived';
+
+    // Thumbnail strip
+    let thumbHtml = '';
+    if (p.thumbnails && p.thumbnails.length > 0) {
+      const thumbs = p.thumbnails.map(t => {
+        if (t.mediaType === 'video') {
+          return `<div class="card-thumb card-thumb-video"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg></div>`;
+        } else if (t.mediaType === 'pdf') {
+          return `<div class="card-thumb card-thumb-pdf"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>`;
+        }
+        return `<div class="card-thumb"><img src="${t.filePath}" alt="" loading="lazy"></div>`;
+      }).join('');
+      const extra = total > 4 ? `<div class="card-thumb card-thumb-more">+${total - 4}</div>` : '';
+      thumbHtml = `<div class="card-thumbs">${thumbs}${extra}</div>`;
+    }
+
     return `
       <div class="project-card" onclick="openProject('${p.id}')">
+        ${thumbHtml}
         <div class="project-card-header">
           <h3>${escapeHtml(p.name)}</h3>
           ${p.clientName ? `<span class="client-badge">${escapeHtml(p.clientName)}</span>` : ''}
@@ -543,16 +560,19 @@ function applySettings(s) {
   if (brandEl) brandEl.textContent = s.brandName || 'ReviewFlow';
   document.title = s.brandName || 'Creative Approval Tool';
 
-  // Logo
+  // Logo — hide brand text when custom logo is set
   const defaultIcon = document.getElementById('logo-default-icon');
   const customImg = document.getElementById('logo-custom-img');
+  const brandText = document.getElementById('brand-name');
   if (s.logoUrl && customImg) {
     customImg.src = s.logoUrl;
     customImg.style.display = 'block';
     if (defaultIcon) defaultIcon.style.display = 'none';
+    if (brandText) brandText.style.display = 'none';
   } else if (customImg) {
     customImg.style.display = 'none';
     if (defaultIcon) defaultIcon.style.display = 'block';
+    if (brandText) brandText.style.display = '';
   }
 }
 
