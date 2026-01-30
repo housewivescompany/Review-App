@@ -22,7 +22,17 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 //   SMTP_PASS=your-app-password
 //   SMTP_FROM=ReviewFlow <you@gmail.com>
 function createMailTransport() {
-  if (process.env.SMTP_HOST) {
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    // Use Gmail service shorthand for Google accounts (handles Workspace better)
+    if (!process.env.SMTP_HOST || process.env.SMTP_HOST === 'smtp.gmail.com') {
+      return nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS.replace(/\s/g, '')
+        }
+      });
+    }
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '587'),
