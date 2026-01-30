@@ -188,6 +188,15 @@ function checkIdentity() {
   updateIdentityDisplay();
 }
 
+// ─── Admin Check (for version uploads) ───────────────────────
+function getAdminToken() {
+  return localStorage.getItem('rf_admin_token');
+}
+
+function isAdmin() {
+  return !!getAdminToken();
+}
+
 // ─── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   applyInstantSettings();
@@ -195,6 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
   parseUrl();
   setupKeyboardNav();
   setupModalKeys();
+  setupVersionUpload();
 });
 
 // ─── Settings (read-only on review page) ─────────────────────
@@ -421,6 +431,9 @@ function renderCreativeReview() {
 
   // Comments
   renderComments();
+
+  // Version section (admin only)
+  showVersionSection();
 }
 
 function renderMedia() {
@@ -624,6 +637,150 @@ function setupModalKeys() {
       }
     }
   });
+}
+
+// ─── Version Management ───────────────────────────────────────
+function setupVersionUpload() {
+  const input = document.getElementById('version-file-input');
+  if (!input) return;
+  input.addEventListener('change', async () => {
+    if (!input.files.length || !projectId || !creativeId) return;
+    await uploadNewVersion(input.files[0]);
+    input.value = '';
+  });
+}
+
+function showVersionSection() {
+  if (!isAdmin() || !creative) return;
+  const section = document.getElementById('version-section');
+  section.style.display = 'block';
+
+  const versionNum = (creative.versions ? creative.versions.length : 0) + 1;
+  document.getElementById('version-badge').textContent = versionNum;
+  document.getElementById('version-label').textContent = `Version ${versionNum} (current)`;
+
+  // Show history toggle if there are previous versions
+  const historyBtn = document.getElementById('toggle-history-btn');
+  if (creative.versions && creative.versions.length > 0) {
+    historyBtn.style.display = '';
+  } else {
+    historyBtn.style.display = 'none';
+  }
+}
+
+function toggleVersionHistory() {
+  const historyEl = document.getElementById('version-history');
+  const btn = document.getElementById('toggle-history-btn');
+  if (historyEl.style.display === 'none') {
+    renderVersionHistory();
+    historyEl.style.display = 'block';
+    btn.textContent = 'Hide History';
+  } else {
+    historyEl.style.display = 'none';
+    btn.textContent = 'View History';
+  }
+}
+
+function renderVersionHistory() {
+  const historyEl = document.getElementById('version-history');
+  if (!creative.versions || creative.versions.length === 0) {
+    historyEl.innerHTML = '<p style="color:var(--text-muted);font-size:0.82rem;">No previous versions</p>';
+    return;
+  }
+
+  const currentNum = creative.versions.length + 1;
+  let html = `<div class="version-item active">
+    <span class="version-item-label">v${currentNum} (current)</span>
+    <span class="version-item-date">${formatDate(creative.uploadedAt)}</span>
+  </div>`;
+
+  // Show versions in reverse chronological order
+  for (let i = creative.versions.length - 1; i >= 0; i--) {
+    const v = creative.versions[i];
+    html += `<div class="version-item" onclick="viewOldVersion(${i})">
+      <span class="version-item-label">v${v.versionNumber}</span>
+      <span class="version-item-date">${formatDate(v.uploadedAt)}</span>
+    </div>`;
+  }
+
+  historyEl.innerHTML = html;
+}
+
+function viewOldVersion(versionIndex) {
+  const v = creative.versions[versionIndex];
+  if (!v) return;
+
+  // Temporarily show old version media
+  const container = document.getElementById('media-container');
+  if (v.mediaType === 'video') {
+    container.innerHTML = `<video controls preload="metadata" class="media-content"><source src="${v.filePath}" type="${v.mimeType}"></video>`;
+  } else if (v.mediaType === 'pdf') {
+    container.innerHTML = `<iframe src="${v.filePath}" class="media-content media-pdf" title="PDF Preview"></iframe>`;
+  } else {
+    container.innerHTML = `<img src="${v.filePath}" alt="${escapeHtml(v.originalName)}" class="media-content">`;
+  }
+  document.getElementById('media-filename').textContent = `${v.originalName} (v${v.versionNumber})`;
+
+  // Highlight active version in history
+  document.querySelectorAll('.version-item').forEach(el => el.classList.remove('active'));
+  const items = document.querySelectorAll('.version-item');
+  // Index 0 is current, old versions start at 1 in reverse
+  const itemIndex = creative.versions.length - versionIndex;
+  if (items[itemIndex]) items[itemIndex].classList.add('active');
+
+  showToast(`Viewing version ${v.versionNumber}`);
+}
+
+function viewCurrentVersion() {
+  renderMedia();
+  document.getElementById('media-filename').textContent = creative.originalName;
+
+  // Highlight current in history
+  document.querySelectorAll('.version-item').forEach(el => el.classList.remove('active'));
+  const first = document.querySelector('.version-item');
+  if (first) first.classList.add('active');
+}
+
+async function uploadNewVersion(file) {
+  const adminToken = getAdminToken();
+  if (!adminToken) {
+    showToast('Admin login required to upload versions', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const btn = document.getElementById('upload-version-btn');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Uploading...';
+
+  try {
+    const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}/versions`, {
+      method: 'POST',
+      headers: { 'x-admin-token': adminToken },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Upload failed');
+    }
+
+    creative = await res.json();
+    renderMedia();
+    document.getElementById('media-filename').textContent = creative.originalName;
+    updateStatusBanner();
+    showVersionSection();
+    renderVersionHistory();
+    showToast('New version uploaded! Status reset to pending.');
+  } catch (err) {
+    showToast(err.message || 'Failed to upload version', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
 }
 
 // ─── Utilities ────────────────────────────────────────────────

@@ -110,6 +110,28 @@
           </button>
         </div>
 
+        <!-- Version History (admin only) -->
+        <div class="sidebar-section" id="version-section" style="display:none;">
+          <h3>
+            Version
+            <span id="version-badge" class="comment-count-badge">1</span>
+          </h3>
+          <div id="version-info" class="version-info">
+            <span id="version-label" class="version-label">Version 1 (current)</span>
+          </div>
+          <div id="version-history" class="version-history" style="display:none;"></div>
+          <div class="version-actions">
+            <input type="file" id="version-file-input" accept="image/*,video/*,.pdf" style="display:none;">
+            <button class="btn btn-outline btn-sm" id="upload-version-btn" onclick="document.getElementById('version-file-input').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              Upload New Version
+            </button>
+            <button class="btn btn-ghost btn-sm" id="toggle-history-btn" onclick="toggleVersionHistory()" style="display:none;">
+              View History
+            </button>
+          </div>
+        </div>
+
         <!-- Approval Actions -->
         <div class="sidebar-section">
           <h3>Approval</h3>

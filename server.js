@@ -110,7 +110,46 @@ function writeSettings(settings) {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
-// ─── Auth Middleware ──────────────────────────────────────────
+// ─── Admin Auth Middleware ────────────────────────────────────
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+
+function requireAdmin(req, res, next) {
+  const token = req.headers['x-admin-token'];
+  if (!token) return res.status(401).json({ error: 'Admin authentication required' });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload.admin) throw new Error();
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid admin token' });
+  }
+}
+
+// Admin login
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    const token = jwt.sign({ admin: true }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token });
+  } else {
+    res.status(401).json({ error: 'Wrong password' });
+  }
+});
+
+// Verify admin token
+app.get('/api/admin/verify', (req, res) => {
+  const token = req.headers['x-admin-token'];
+  if (!token) return res.status(401).json({ valid: false });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload.admin) throw new Error();
+    res.json({ valid: true });
+  } catch {
+    res.status(401).json({ valid: false });
+  }
+});
+
+// ─── Auth Middleware (user) ──────────────────────────────────
 function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -263,7 +302,7 @@ app.get('/api/settings', (req, res) => {
   res.json(readSettings());
 });
 
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', requireAdmin, (req, res) => {
   const settings = readSettings();
   const { brandName, theme, accentColor } = req.body;
   if (brandName !== undefined) settings.brandName = (brandName.trim() || 'ReviewFlow');
@@ -299,7 +338,7 @@ const logoUpload = multer({
   }
 });
 
-app.post('/api/settings/logo', logoUpload.single('logo'), (req, res) => {
+app.post('/api/settings/logo', requireAdmin, logoUpload.single('logo'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const settings = readSettings();
   if (settings.logoUrl) {
@@ -311,7 +350,7 @@ app.post('/api/settings/logo', logoUpload.single('logo'), (req, res) => {
   res.json(settings);
 });
 
-app.delete('/api/settings/logo', (req, res) => {
+app.delete('/api/settings/logo', requireAdmin, (req, res) => {
   const settings = readSettings();
   if (settings.logoUrl) {
     const logoPath = path.join(UPLOADS_DIR, settings.logoUrl.replace('/uploads/', ''));
@@ -356,7 +395,7 @@ const upload = multer({
 // ─── API Routes ───────────────────────────────────────────────
 
 // Get all projects (filter by archived status)
-app.get('/api/projects', (req, res) => {
+app.get('/api/projects', requireAdmin, (req, res) => {
   const projects = readProjects();
   const showArchived = req.query.archived === 'true';
   const filtered = projects.filter(p => showArchived ? p.archived === true : !p.archived);
@@ -379,7 +418,7 @@ app.get('/api/projects', (req, res) => {
 });
 
 // Get all unique client names for autocomplete
-app.get('/api/client-names', (req, res) => {
+app.get('/api/client-names', requireAdmin, (req, res) => {
   const projects = readProjects();
   const names = [...new Set(
     projects.map(p => p.clientName).filter(n => n && n.trim())
@@ -388,7 +427,7 @@ app.get('/api/client-names', (req, res) => {
 });
 
 // Create a new project
-app.post('/api/projects', (req, res) => {
+app.post('/api/projects', requireAdmin, (req, res) => {
   const { name, clientName } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Project name is required' });
@@ -415,7 +454,7 @@ app.get('/api/projects/:projectId', (req, res) => {
 });
 
 // Update project (archive/unarchive, rename)
-app.patch('/api/projects/:projectId', (req, res) => {
+app.patch('/api/projects/:projectId', requireAdmin, (req, res) => {
   const projects = readProjects();
   const project = projects.find(p => p.id === req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -430,7 +469,7 @@ app.patch('/api/projects/:projectId', (req, res) => {
 });
 
 // Delete a project
-app.delete('/api/projects/:projectId', (req, res) => {
+app.delete('/api/projects/:projectId', requireAdmin, (req, res) => {
   const projects = readProjects();
   const idx = projects.findIndex(p => p.id === req.params.projectId);
   if (idx === -1) return res.status(404).json({ error: 'Project not found' });
@@ -447,7 +486,7 @@ app.delete('/api/projects/:projectId', (req, res) => {
 });
 
 // Upload creatives to a project
-app.post('/api/projects/:projectId/creatives', (req, res, next) => {
+app.post('/api/projects/:projectId/creatives', requireAdmin, (req, res, next) => {
   // Extend timeout to 30 minutes for large video uploads
   req.setTimeout(30 * 60 * 1000);
   res.setTimeout(30 * 60 * 1000);
@@ -523,8 +562,56 @@ app.patch('/api/projects/:projectId/creatives/:creativeId', (req, res) => {
   res.json(creative);
 });
 
+// Upload new version of a creative
+app.post('/api/projects/:projectId/creatives/:creativeId/versions', requireAdmin, (req, res, next) => {
+  req.setTimeout(30 * 60 * 1000);
+  res.setTimeout(30 * 60 * 1000);
+  next();
+}, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const projects = readProjects();
+  const project = projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const creative = project.creatives.find(c => c.id === req.params.creativeId);
+  if (!creative) return res.status(404).json({ error: 'Creative not found' });
+
+  // Initialize versions array if it doesn't exist
+  if (!creative.versions) creative.versions = [];
+
+  // Save current file as a previous version
+  creative.versions.push({
+    versionNumber: creative.versions.length + 1,
+    fileName: creative.fileName,
+    filePath: creative.filePath,
+    originalName: creative.originalName,
+    fileSize: creative.fileSize,
+    mimeType: creative.mimeType,
+    mediaType: creative.mediaType,
+    uploadedAt: creative.uploadedAt
+  });
+
+  // Update creative with new file
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const isVideo = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv'].includes(ext);
+  const isPdf = ext === '.pdf';
+
+  creative.originalName = req.file.originalname;
+  creative.fileName = req.file.filename;
+  creative.filePath = `/uploads/${req.params.projectId}/${req.file.filename}`;
+  creative.fileSize = req.file.size;
+  creative.mimeType = req.file.mimetype;
+  creative.mediaType = isVideo ? 'video' : isPdf ? 'pdf' : 'image';
+  creative.uploadedAt = new Date().toISOString();
+  creative.status = 'pending'; // Reset status for new version
+
+  writeProjects(projects);
+  res.json(creative);
+});
+
 // Delete a creative
-app.delete('/api/projects/:projectId/creatives/:creativeId', (req, res) => {
+app.delete('/api/projects/:projectId/creatives/:creativeId', requireAdmin, (req, res) => {
   const projects = readProjects();
   const project = projects.find(p => p.id === req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });

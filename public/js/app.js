@@ -5,6 +5,98 @@ let currentProjectTab = 'active';
 let appSettings = null;
 let archivedCount = 0;
 
+// ─── Admin Auth ───────────────────────────────────────────────
+function getAdminToken() {
+  return localStorage.getItem('rf_admin_token');
+}
+
+function setAdminToken(token) {
+  localStorage.setItem('rf_admin_token', token);
+}
+
+function clearAdminToken() {
+  localStorage.removeItem('rf_admin_token');
+}
+
+async function adminFetch(url, options = {}) {
+  const token = getAdminToken();
+  if (token) {
+    options.headers = options.headers || {};
+    options.headers['x-admin-token'] = token;
+  }
+  return fetch(url, options);
+}
+
+async function checkAdminAuth() {
+  const token = getAdminToken();
+  if (!token) {
+    showAdminLogin();
+    return;
+  }
+  try {
+    const res = await fetch('/api/admin/verify', {
+      headers: { 'x-admin-token': token }
+    });
+    const data = await res.json();
+    if (data.valid) {
+      showDashboard();
+    } else {
+      clearAdminToken();
+      showAdminLogin();
+    }
+  } catch {
+    showAdminLogin();
+  }
+}
+
+function showAdminLogin() {
+  document.getElementById('admin-login').style.display = 'flex';
+  document.getElementById('main-content').style.display = 'none';
+  document.getElementById('admin-signout-btn').style.display = 'none';
+}
+
+function showDashboard() {
+  document.getElementById('admin-login').style.display = 'none';
+  document.getElementById('main-content').style.display = 'block';
+  document.getElementById('admin-signout-btn').style.display = '';
+  loadProjects();
+  loadClientNames();
+  loadArchivedCount();
+}
+
+async function adminLogin(e) {
+  e.preventDefault();
+  const password = document.getElementById('admin-password').value;
+  const errorEl = document.getElementById('admin-login-error');
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setAdminToken(data.token);
+      showDashboard();
+    } else {
+      errorEl.style.display = 'block';
+      document.getElementById('admin-password').value = '';
+      document.getElementById('admin-password').focus();
+    }
+  } catch {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.style.display = 'block';
+  }
+}
+
+function adminSignOut() {
+  clearAdminToken();
+  showAdminLogin();
+  document.getElementById('admin-password').value = '';
+}
+
 // ─── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   applyInstantSettings();
@@ -14,16 +106,14 @@ document.addEventListener('DOMContentLoaded', () => {
   setupModalKeys();
   setupClientAutocomplete();
   setupLogoUpload();
-  loadProjects();
-  loadClientNames();
-  loadArchivedCount();
+  checkAdminAuth();
 });
 
 // ─── Projects List ────────────────────────────────────────────
 async function loadProjects() {
   try {
     const archived = currentProjectTab === 'archived';
-    const res = await fetch(`/api/projects?archived=${archived}`);
+    const res = await adminFetch(`/api/projects?archived=${archived}`);
     const projects = await res.json();
     renderProjectsList(projects);
   } catch (err) {
@@ -33,7 +123,7 @@ async function loadProjects() {
 
 async function loadArchivedCount() {
   try {
-    const res = await fetch('/api/projects?archived=true');
+    const res = await adminFetch('/api/projects?archived=true');
     const projects = await res.json();
     archivedCount = projects.length;
     const el = document.getElementById('archived-tab-count');
@@ -144,7 +234,7 @@ function showProjectsList() {
 async function openProject(projectId) {
   currentProjectId = projectId;
   try {
-    const res = await fetch(`/api/projects/${projectId}`);
+    const res = await adminFetch(`/api/projects/${projectId}`);
     if (!res.ok) throw new Error('Project not found');
     currentProject = await res.json();
     renderProjectView();
@@ -326,6 +416,8 @@ async function uploadFiles(files) {
   try {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api/projects/${currentProjectId}/creatives`);
+    const adminToken = getAdminToken();
+    if (adminToken) xhr.setRequestHeader('x-admin-token', adminToken);
 
     xhr.upload.addEventListener('progress', e => {
       if (e.lengthComputable) {
@@ -387,7 +479,7 @@ async function createProject() {
   }
 
   try {
-    const res = await fetch('/api/projects', {
+    const res = await adminFetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, clientName })
@@ -411,7 +503,7 @@ function hideDeleteModal() {
 
 async function deleteProject() {
   try {
-    await fetch(`/api/projects/${currentProjectId}`, { method: 'DELETE' });
+    await adminFetch(`/api/projects/${currentProjectId}`, { method: 'DELETE' });
     hideDeleteModal();
     showProjectsList();
     showToast('Project deleted');
@@ -442,7 +534,7 @@ let cachedClientNames = [];
 
 async function loadClientNames() {
   try {
-    const res = await fetch('/api/client-names');
+    const res = await adminFetch('/api/client-names');
     cachedClientNames = await res.json();
   } catch { cachedClientNames = []; }
 }
@@ -486,7 +578,7 @@ function selectClientName(name) {
 // ─── Archive ──────────────────────────────────────────────────
 async function archiveFromCard(projectId, archive) {
   try {
-    await fetch(`/api/projects/${projectId}`, {
+    await adminFetch(`/api/projects/${projectId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ archived: archive })
@@ -502,7 +594,7 @@ async function archiveFromCard(projectId, archive) {
 async function deleteFromCard(projectId, projectName) {
   if (!confirm(`Delete "${projectName}"? This will permanently remove the project and all its files.`)) return;
   try {
-    const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+    const res = await adminFetch(`/api/projects/${projectId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error();
     showToast('Project deleted');
     loadProjects();
@@ -516,7 +608,7 @@ async function toggleArchiveProject() {
   if (!currentProjectId || !currentProject) return;
   const newArchived = !currentProject.archived;
   try {
-    await fetch(`/api/projects/${currentProjectId}`, {
+    await adminFetch(`/api/projects/${currentProjectId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ archived: newArchived })
@@ -640,7 +732,7 @@ function updateSettingsLogoPreview() {
 
 async function saveSettingsField(updates) {
   try {
-    const res = await fetch('/api/settings', {
+    const res = await adminFetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates)
@@ -675,7 +767,7 @@ function setupLogoUpload() {
     const formData = new FormData();
     formData.append('logo', input.files[0]);
     try {
-      const res = await fetch('/api/settings/logo', { method: 'POST', body: formData });
+      const res = await adminFetch('/api/settings/logo', { method: 'POST', body: formData });
       appSettings = await res.json();
       applySettings(appSettings);
       updateSettingsLogoPreview();
@@ -689,7 +781,7 @@ function setupLogoUpload() {
 
 async function removeLogo() {
   try {
-    const res = await fetch('/api/settings/logo', { method: 'DELETE' });
+    const res = await adminFetch('/api/settings/logo', { method: 'DELETE' });
     appSettings = await res.json();
     applySettings(appSettings);
     updateSettingsLogoPreview();
