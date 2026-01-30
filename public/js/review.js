@@ -116,11 +116,13 @@ async function submitAuth() {
       // Save redirect URL so after verification we come back here
       localStorage.setItem('reviewflow_redirect', window.location.href);
 
-      // Show "check your email" message
-      document.getElementById('magic-link-sent').style.display = 'flex';
+      // Show response message
+      const sentDiv = document.getElementById('magic-link-sent');
+      sentDiv.style.display = 'flex';
+      sentDiv.querySelector('p').textContent = data.message || 'Check your email for a sign-in link!';
       document.getElementById('auth-submit-btn').style.display = 'none';
 
-      // Dev mode: show direct sign-in button
+      // Show direct sign-in button when devToken is provided (dev mode or email failure)
       if (data.devToken) {
         devToken = data.devToken;
         document.getElementById('dev-token-hint').style.display = 'block';

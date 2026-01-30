@@ -121,6 +121,7 @@ app.post('/api/auth/magic-link', async (req, res) => {
   const transport = createMailTransport();
   if (transport) {
     try {
+      console.log(`Sending magic link email to ${emailNorm}...`);
       await transport.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
         to: emailNorm,
@@ -134,16 +135,18 @@ app.post('/api/auth/magic-link', async (req, res) => {
           </div>
         `
       });
+      console.log(`Magic link email sent successfully to ${emailNorm}`);
       res.json({ success: true, message: 'Magic link sent! Check your email.' });
     } catch (err) {
       console.error('Email send error:', err.message);
-      // Fall back to returning token directly in dev
-      res.json({ success: true, message: 'Magic link sent! Check your email.', devToken: process.env.NODE_ENV !== 'production' ? token : undefined });
+      console.log(`\n  Fallback magic link for ${emailNorm}:\n  ${magicLink}\n`);
+      // Return error info + dev token fallback
+      res.json({ success: true, message: `Email failed to send (${err.message}). Use the direct sign-in button below.`, devToken: token });
     }
   } else {
     // No email configured - return token directly (dev mode)
     console.log(`\n  Magic link for ${emailNorm}:\n  ${magicLink}\n`);
-    res.json({ success: true, message: 'Email not configured. Check the server console for the magic link.', devToken: token });
+    res.json({ success: true, message: 'Email not configured. Use the direct sign-in button below.', devToken: token });
   }
 });
 
