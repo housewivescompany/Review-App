@@ -844,7 +844,8 @@ function setupZoom() {
     if (!creative || creative.mediaType !== 'image') return;
 
     if (e.touches.length === 2) {
-      // Two-finger pinch-to-zoom
+      // Two-finger pinch-to-zoom — lock touch actions immediately
+      wrapper.style.touchAction = 'none';
       e.preventDefault();
       isTouchPanning = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -887,6 +888,10 @@ function setupZoom() {
   wrapper.addEventListener('touchend', () => {
     lastTouchDist = 0;
     isTouchPanning = false;
+    // Restore normal touch scrolling if zoomed back to 1
+    if (zoomLevel <= 1) {
+      wrapper.style.touchAction = '';
+    }
   });
 }
 
@@ -913,7 +918,11 @@ function applyZoom() {
   if (zoomLevelEl) {
     zoomLevelEl.textContent = `${Math.round(zoomLevel * 100)}%`;
   }
-  if (wrapper) wrapper.style.cursor = zoomLevel > 1 ? 'grab' : '';
+  if (wrapper) {
+    wrapper.style.cursor = zoomLevel > 1 ? 'grab' : '';
+    // Disable browser touch scrolling when zoomed so our pan handlers work
+    wrapper.style.touchAction = zoomLevel > 1 ? 'none' : '';
+  }
 }
 
 function resetZoom() {
