@@ -779,6 +779,13 @@ img.media-content {
   color: var(--accent);
 }
 
+/* ─── Zoom Controls ──────────────────────────────────────── */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 /* ─── Pin Overlay ────────────────────────────────────────── */
 .pin-overlay {
   position: absolute;
@@ -1076,15 +1083,23 @@ img.media-content {
   color: var(--text-muted);
 }
 
+.comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
 .comment-delete {
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   padding: 2px;
-  margin-left: auto;
   opacity: 0;
   transition: opacity var(--transition);
+  display: flex;
+  align-items: center;
 }
 
 .comment:hover .comment-delete {
@@ -1093,6 +1108,45 @@ img.media-content {
 
 .comment-delete:hover {
   color: var(--red);
+}
+
+/* ─── Resolve Comment ────────────────────────────────────── */
+.comment-resolve-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+  display: flex;
+  align-items: center;
+}
+
+.comment:hover .comment-resolve-btn {
+  opacity: 1;
+}
+
+.comment-resolve-btn.resolved {
+  color: var(--green);
+  opacity: 1;
+}
+
+.comment-resolve-btn:hover {
+  color: var(--green);
+}
+
+.comment-resolved {
+  opacity: 0.6;
+}
+
+.comment-resolved-badge {
+  font-size: 0.68rem;
+  color: var(--green);
+  background: var(--green-bg);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
 }
 
 .comment-text {

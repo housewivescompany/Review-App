@@ -16,7 +16,8 @@ let panStartX = 0;
 let panStartY = 0;
 let pinMode = false;
 let pendingPin = null; // { x, y } percentages
-let pinsVisible = true;
+let pinsVisible = false;
+let activePinCommentId = null;
 
 // ─── Identity & Auth ──────────────────────────────────────────
 function getIdentity() {
@@ -479,7 +480,14 @@ function renderMedia() {
     container.querySelector('img').addEventListener('error', () => showMediaError(container));
   }
 
+  // Show zoom controls for images only
+  const zoomControls = document.getElementById('zoom-controls');
+  if (zoomControls) {
+    zoomControls.style.display = creative.mediaType === 'image' ? 'flex' : 'none';
+  }
+
   // Render pin markers
+  activePinCommentId = null;
   renderPins();
 }
 
@@ -579,18 +587,27 @@ function renderComments() {
   list.innerHTML = creative.comments.map(c => {
     const isPinned = c.pinX !== undefined && c.pinY !== undefined;
     if (isPinned) pinNum++;
-    const pinBadge = isPinned ? `<span class="comment-pin-badge" onclick="focusPin('${c.id}')" title="Go to pin">
+    const pinBadge = isPinned ? `<span class="comment-pin-badge" onclick="focusPin('${c.id}')" title="Show pin on image">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path></svg>
       ${pinNum}</span>` : '';
+    const isResolved = !!c.resolved;
+    const resolvedBadge = isResolved ? '<span class="comment-resolved-badge">Resolved</span>' : '';
+    const resolveBtn = `<button class="comment-resolve-btn ${isResolved ? 'resolved' : ''}" onclick="resolveComment('${c.id}')" title="${isResolved ? 'Unresolve' : 'Mark as resolved'}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </button>`;
     return `
-    <div class="comment ${isPinned ? 'comment-pinned' : ''}" id="comment-${c.id}" data-comment-id="${c.id}">
+    <div class="comment ${isPinned ? 'comment-pinned' : ''} ${isResolved ? 'comment-resolved' : ''}" id="comment-${c.id}" data-comment-id="${c.id}">
       <div class="comment-header">
         ${pinBadge}
         <strong class="comment-author">${escapeHtml(c.author)}</strong>
+        ${resolvedBadge}
         <span class="comment-date">${formatDate(c.createdAt)}</span>
-        <button class="comment-delete" onclick="deleteComment('${c.id}')" title="Delete comment">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
+        <div class="comment-actions">
+          ${resolveBtn}
+          <button class="comment-delete" onclick="deleteComment('${c.id}')" title="Delete comment">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
       </div>
       <p class="comment-text">${escapeHtml(c.text)}</p>
     </div>
@@ -644,10 +661,34 @@ async function deleteComment(commentId) {
       method: 'DELETE'
     });
     creative.comments = creative.comments.filter(c => c.id !== commentId);
+    if (activePinCommentId === commentId) activePinCommentId = null;
     renderComments();
     renderPins();
   } catch (err) {
     showToast('Failed to delete comment', 'error');
+  }
+}
+
+async function resolveComment(commentId) {
+  const comment = creative.comments.find(c => c.id === commentId);
+  if (!comment) return;
+
+  const newResolved = !comment.resolved;
+  try {
+    const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}/comments/${commentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolved: newResolved })
+    });
+    const updated = await res.json();
+    const idx = creative.comments.findIndex(c => c.id === commentId);
+    if (idx !== -1) {
+      creative.comments[idx] = { ...creative.comments[idx], ...updated };
+    }
+    renderComments();
+    showToast(newResolved ? 'Comment resolved' : 'Comment unresolved');
+  } catch (err) {
+    showToast('Failed to update comment', 'error');
   }
 }
 
@@ -677,6 +718,8 @@ function setupKeyboardNav() {
 
     if (e.key === 'ArrowLeft') navigateCreative(-1);
     if (e.key === 'ArrowRight') navigateCreative(1);
+    if (e.key === '+' || e.key === '=') zoomIn();
+    if (e.key === '-') zoomOut();
   });
 }
 
@@ -757,6 +800,37 @@ function setupZoom() {
     if (e.target.closest('.pin-marker')) return;
     resetZoom();
   });
+
+  // Touch pinch-to-zoom
+  let lastTouchDist = 0;
+  let touchStartZoom = 1;
+
+  wrapper.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2 && creative && creative.mediaType === 'image') {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+      touchStartZoom = zoomLevel;
+    }
+  }, { passive: false });
+
+  wrapper.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && creative && creative.mediaType === 'image' && lastTouchDist > 0) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / lastTouchDist;
+      zoomLevel = Math.max(1, Math.min(5, touchStartZoom * scale));
+      constrainPan(wrapper);
+      applyZoom();
+    }
+  }, { passive: false });
+
+  wrapper.addEventListener('touchend', () => {
+    lastTouchDist = 0;
+  });
 }
 
 function constrainPan(wrapper) {
@@ -771,7 +845,6 @@ function constrainPan(wrapper) {
 function applyZoom() {
   const container = document.getElementById('media-container');
   const overlay = document.getElementById('pin-overlay');
-  const resetBtn = document.getElementById('zoom-reset-btn');
   const wrapper = document.getElementById('media-wrapper');
   if (!container) return;
 
@@ -779,9 +852,9 @@ function applyZoom() {
   container.style.transform = transform;
   if (overlay) overlay.style.transform = transform;
 
-  if (resetBtn) {
-    resetBtn.style.display = zoomLevel > 1 ? 'inline-flex' : 'none';
-    document.getElementById('zoom-level').textContent = `${Math.round(zoomLevel * 100)}%`;
+  const zoomLevelEl = document.getElementById('zoom-level');
+  if (zoomLevelEl) {
+    zoomLevelEl.textContent = `${Math.round(zoomLevel * 100)}%`;
   }
   if (wrapper) wrapper.style.cursor = zoomLevel > 1 ? 'grab' : '';
 }
@@ -790,6 +863,22 @@ function resetZoom() {
   zoomLevel = 1;
   panX = 0;
   panY = 0;
+  applyZoom();
+}
+
+function zoomIn() {
+  if (!creative || creative.mediaType !== 'image') return;
+  const wrapper = document.getElementById('media-wrapper');
+  zoomLevel = Math.min(5, zoomLevel + 0.5);
+  constrainPan(wrapper);
+  applyZoom();
+}
+
+function zoomOut() {
+  if (!creative || creative.mediaType !== 'image') return;
+  const wrapper = document.getElementById('media-wrapper');
+  zoomLevel = Math.max(1, zoomLevel - 0.5);
+  constrainPan(wrapper);
   applyZoom();
 }
 
@@ -878,13 +967,12 @@ function renderPins() {
   if (toggleBtn) {
     if (pinnedComments.length > 0) {
       toggleBtn.style.display = 'inline-flex';
+      toggleBtn.title = pinsVisible ? 'Hide all pins' : 'Show all pins';
       document.getElementById('pin-count-label').textContent = pinnedComments.length;
     } else {
       toggleBtn.style.display = 'none';
     }
   }
-
-  if (!pinsVisible) return;
 
   pinnedComments.forEach((c, i) => {
     const marker = document.createElement('div');
@@ -894,6 +982,15 @@ function renderPins() {
     marker.textContent = i + 1;
     marker.dataset.commentId = c.id;
     marker.title = `${c.author}: ${c.text.substring(0, 60)}${c.text.length > 60 ? '...' : ''}`;
+
+    // Show pin if "show all" is on, or if this is the active pin
+    if (pinsVisible || c.id === activePinCommentId) {
+      marker.style.display = '';
+      if (c.id === activePinCommentId) marker.classList.add('pin-active');
+    } else {
+      marker.style.display = 'none';
+    }
+
     marker.addEventListener('click', (e) => {
       e.stopPropagation();
       focusPin(c.id);
@@ -911,28 +1008,38 @@ function renderPins() {
 }
 
 function focusPin(commentId) {
-  // Scroll to comment in sidebar
+  // Toggle off if clicking the same pin
+  if (activePinCommentId === commentId) {
+    activePinCommentId = null;
+    renderPins();
+    const commentEl = document.getElementById(`comment-${commentId}`);
+    if (commentEl) commentEl.classList.remove('comment-highlight');
+    return;
+  }
+
+  // Remove previous highlight
+  if (activePinCommentId) {
+    const prevComment = document.getElementById(`comment-${activePinCommentId}`);
+    if (prevComment) prevComment.classList.remove('comment-highlight');
+  }
+
+  // Activate this pin
+  activePinCommentId = commentId;
+  renderPins();
+
+  // Scroll to and highlight comment
   const commentEl = document.getElementById(`comment-${commentId}`);
   if (commentEl) {
     commentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     commentEl.classList.add('comment-highlight');
-    setTimeout(() => commentEl.classList.remove('comment-highlight'), 2000);
-  }
-
-  // Highlight pin on image
-  document.querySelectorAll('.pin-marker').forEach(m => m.classList.remove('pin-active'));
-  const pin = document.querySelector(`.pin-marker[data-comment-id="${commentId}"]`);
-  if (pin) {
-    pin.classList.add('pin-active');
-    setTimeout(() => pin.classList.remove('pin-active'), 2000);
   }
 }
 
 function togglePinsVisibility() {
   pinsVisible = !pinsVisible;
+  if (!pinsVisible) activePinCommentId = null;
   const btn = document.getElementById('toggle-pins-btn');
-  btn.classList.toggle('active', !pinsVisible);
-  btn.title = pinsVisible ? 'Hide pins' : 'Show pins';
+  btn.classList.toggle('active', pinsVisible);
   renderPins();
 }
 

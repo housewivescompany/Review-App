@@ -661,6 +661,31 @@ app.post('/api/projects/:projectId/creatives/:creativeId/comments', (req, res) =
   res.status(201).json(comment);
 });
 
+// Resolve/unresolve a comment
+app.patch('/api/projects/:projectId/creatives/:creativeId/comments/:commentId', (req, res) => {
+  const projects = readProjects();
+  const project = projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const creative = project.creatives.find(c => c.id === req.params.creativeId);
+  if (!creative) return res.status(404).json({ error: 'Creative not found' });
+
+  const comment = creative.comments.find(c => c.id === req.params.commentId);
+  if (!comment) return res.status(404).json({ error: 'Comment not found' });
+
+  if (req.body.resolved !== undefined) {
+    comment.resolved = !!req.body.resolved;
+    if (comment.resolved) {
+      comment.resolvedAt = new Date().toISOString();
+    } else {
+      delete comment.resolvedAt;
+    }
+  }
+
+  writeProjects(projects);
+  res.json(comment);
+});
+
 // Delete a comment
 app.delete('/api/projects/:projectId/creatives/:creativeId/comments/:commentId', (req, res) => {
   const projects = readProjects();
