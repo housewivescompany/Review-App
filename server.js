@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const PDFDocument = require('pdfkit');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -455,142 +456,156 @@ app.get('/api/projects/:projectId', (req, res) => {
 });
 
 // Export project as PDF
-app.get('/api/projects/:projectId/export-pdf', (req, res) => {
+app.get('/api/projects/:projectId/export-pdf', async (req, res) => {
   const projects = readProjects();
   const project = projects.find(p => p.id === req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
-  const doc = new PDFDocument({
-    size: 'letter',
-    margin: 50,
-    info: {
-      Title: `${project.name} - Creative Review`,
-      Author: readSettings().brandName || 'ReviewFlow'
+  try {
+    const doc = new PDFDocument({
+      size: 'letter',
+      margin: 50,
+      info: {
+        Title: `${project.name} - Creative Review`,
+        Author: readSettings().brandName || 'ReviewFlow'
+      }
+    });
+
+    doc.on('error', (err) => {
+      console.error('PDF stream error:', err.message);
+    });
+
+    const safeName = project.name.replace(/[^a-zA-Z0-9_\- ]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_review.pdf"`);
+    doc.pipe(res);
+
+    const pageW = 512; // usable width (612 - 2*50)
+
+    // ── Cover Page ──
+    doc.moveDown(4);
+    doc.fontSize(28).font('Helvetica-Bold').fillColor('#000').text(project.name, { align: 'center' });
+    doc.moveDown(0.5);
+    if (project.clientName) {
+      doc.fontSize(14).font('Helvetica').fillColor('#666').text(`Client: ${project.clientName}`, { align: 'center' });
     }
-  });
+    doc.moveDown(1);
+    doc.fontSize(11).fillColor('#999').text(
+      `Exported ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      { align: 'center' }
+    );
 
-  const safeName = project.name.replace(/[^a-zA-Z0-9_\- ]/g, '_');
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${safeName}_review.pdf"`);
-  doc.pipe(res);
+    doc.moveDown(2);
+    doc.moveTo(50, doc.y).lineTo(562, doc.y).strokeColor('#ddd').stroke();
+    doc.moveDown(1.5);
 
-  const pageW = 512; // usable width (612 - 2*50)
+    const total = project.creatives.length;
+    const approved = project.creatives.filter(c => c.status === 'approved').length;
+    const pending = project.creatives.filter(c => c.status === 'pending').length;
+    const revision = project.creatives.filter(c => c.status === 'revision_requested').length;
 
-  // ── Cover Page ──
-  doc.moveDown(4);
-  doc.fontSize(28).font('Helvetica-Bold').fillColor('#000').text(project.name, { align: 'center' });
-  doc.moveDown(0.5);
-  if (project.clientName) {
-    doc.fontSize(14).font('Helvetica').fillColor('#666').text(`Client: ${project.clientName}`, { align: 'center' });
-  }
-  doc.moveDown(1);
-  doc.fontSize(11).fillColor('#999').text(
-    `Exported ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
-    { align: 'center' }
-  );
+    doc.fontSize(14).font('Helvetica-Bold').fillColor('#333').text(
+      `${total} Creative${total !== 1 ? 's' : ''}`, { align: 'center' }
+    );
+    doc.moveDown(0.3);
+    doc.fontSize(11).font('Helvetica').fillColor('#666').text(
+      `${approved} Approved  ·  ${pending} Pending  ·  ${revision} Revision${revision !== 1 ? 's' : ''}`,
+      { align: 'center' }
+    );
 
-  doc.moveDown(2);
-  doc.moveTo(50, doc.y).lineTo(562, doc.y).strokeColor('#ddd').stroke();
-  doc.moveDown(1.5);
+    // ── Creative Pages ──
+    const statusColors = { approved: '#22c55e', pending: '#eab308', revision_requested: '#f97316' };
+    const statusLabels = { approved: 'Approved', pending: 'Pending Review', revision_requested: 'Revision Requested' };
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'];
 
-  const total = project.creatives.length;
-  const approved = project.creatives.filter(c => c.status === 'approved').length;
-  const pending = project.creatives.filter(c => c.status === 'pending').length;
-  const revision = project.creatives.filter(c => c.status === 'revision_requested').length;
+    for (let idx = 0; idx < project.creatives.length; idx++) {
+      const creative = project.creatives[idx];
+      doc.addPage();
 
-  doc.fontSize(14).font('Helvetica-Bold').fillColor('#333').text(
-    `${total} Creative${total !== 1 ? 's' : ''}`, { align: 'center' }
-  );
-  doc.moveDown(0.3);
-  doc.fontSize(11).font('Helvetica').fillColor('#666').text(
-    `${approved} Approved  ·  ${pending} Pending  ·  ${revision} Revision${revision !== 1 ? 's' : ''}`,
-    { align: 'center' }
-  );
+      // Title
+      doc.fontSize(18).font('Helvetica-Bold').fillColor('#000');
+      doc.text(creative.title || creative.originalName);
 
-  // ── Creative Pages ──
-  const statusColors = { approved: '#22c55e', pending: '#eab308', revision_requested: '#f97316' };
-  const statusLabels = { approved: 'Approved', pending: 'Pending Review', revision_requested: 'Revision Requested' };
+      // Subtitle: number + status
+      doc.moveDown(0.2);
+      doc.fontSize(10).font('Helvetica').fillColor('#999');
+      doc.text(`Creative ${idx + 1} of ${total}`, { continued: true });
+      doc.fillColor(statusColors[creative.status] || '#666');
+      doc.text(`  ·  ${statusLabels[creative.status] || creative.status}`);
+      doc.moveDown(0.8);
 
-  project.creatives.forEach((creative, idx) => {
-    doc.addPage();
+      // Image — resize with sharp to keep memory low
+      if (creative.mediaType === 'image') {
+        const imgPath = path.join(UPLOADS_DIR, creative.filePath.replace('/uploads/', ''));
+        const ext = path.extname(imgPath).toLowerCase();
 
-    // Title
-    doc.fontSize(18).font('Helvetica-Bold').fillColor('#000');
-    doc.text(creative.title || creative.originalName);
+        if (fs.existsSync(imgPath) && imageExts.includes(ext)) {
+          try {
+            const buf = await sharp(imgPath)
+              .resize(1600, 1200, { fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 80 })
+              .toBuffer();
 
-    // Subtitle: number + status
-    doc.moveDown(0.2);
-    doc.fontSize(10).font('Helvetica').fillColor('#999');
-    doc.text(`Creative ${idx + 1} of ${total}`, { continued: true });
-    doc.fillColor(statusColors[creative.status] || '#666');
-    doc.text(`  ·  ${statusLabels[creative.status] || creative.status}`);
-    doc.moveDown(0.8);
-
-    // Image
-    if (creative.mediaType === 'image') {
-      const imgPath = path.join(UPLOADS_DIR, creative.filePath.replace('/uploads/', ''));
-      const ext = path.extname(imgPath).toLowerCase();
-      if (fs.existsSync(imgPath) && ['.jpg', '.jpeg', '.png'].includes(ext)) {
-        try {
-          const img = doc.openImage(imgPath);
-          const maxW = pageW, maxH = 350;
-          const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-          const w = img.width * scale;
-          const h = img.height * scale;
-          const x = 50 + (maxW - w) / 2;
-          doc.image(img, x, doc.y, { width: w, height: h });
-          doc.y += h + 15;
-        } catch {
-          doc.fontSize(10).fillColor('#999').text(`[Could not embed: ${creative.originalName}]`);
+            doc.image(buf, { fit: [pageW, 350], align: 'center' });
+            doc.moveDown(1);
+          } catch (imgErr) {
+            console.error(`PDF image error (${creative.originalName}):`, imgErr.message);
+            doc.fontSize(10).fillColor('#999').text(`[Could not embed: ${creative.originalName}]`);
+            doc.moveDown(0.5);
+          }
+        } else if (fs.existsSync(imgPath)) {
+          doc.fontSize(10).fillColor('#999').text(`[${creative.originalName} — format not supported in PDF]`);
+          doc.moveDown(0.5);
+        } else {
+          doc.fontSize(10).fillColor('#999').text(`[File not found: ${creative.originalName}]`);
           doc.moveDown(0.5);
         }
-      } else if (fs.existsSync(imgPath)) {
-        doc.fontSize(10).fillColor('#999').text(`[${creative.originalName} — format not embeddable in PDF]`);
+      } else if (creative.mediaType === 'video') {
+        doc.fontSize(10).fillColor('#999').text(`[Video file: ${creative.originalName}]`);
         doc.moveDown(0.5);
-      } else {
-        doc.fontSize(10).fillColor('#999').text(`[File not found: ${creative.originalName}]`);
+      } else if (creative.mediaType === 'pdf') {
+        doc.fontSize(10).fillColor('#999').text(`[PDF document: ${creative.originalName}]`);
         doc.moveDown(0.5);
       }
-    } else if (creative.mediaType === 'video') {
-      doc.fontSize(10).fillColor('#999').text(`[Video file: ${creative.originalName}]`);
-      doc.moveDown(0.5);
-    } else if (creative.mediaType === 'pdf') {
-      doc.fontSize(10).fillColor('#999').text(`[PDF document: ${creative.originalName}]`);
-      doc.moveDown(0.5);
-    }
 
-    // Caption
-    if (creative.caption) {
-      doc.moveDown(0.3);
-      doc.fontSize(10).font('Helvetica-Bold').fillColor('#333').text('Caption');
-      doc.fontSize(10).font('Helvetica').fillColor('#444').text(creative.caption);
-      doc.moveDown(0.5);
-    }
+      // Caption
+      if (creative.caption) {
+        doc.moveDown(0.3);
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333').text('Caption');
+        doc.fontSize(10).font('Helvetica').fillColor('#444').text(creative.caption);
+        doc.moveDown(0.5);
+      }
 
-    // Comments
-    if (creative.comments.length > 0) {
-      doc.moveDown(0.3);
-      const resolvedCount = creative.comments.filter(c => c.resolved).length;
-      const commLabel = `Comments (${creative.comments.length}${resolvedCount > 0 ? `, ${resolvedCount} resolved` : ''})`;
-      doc.fontSize(10).font('Helvetica-Bold').fillColor('#333').text(commLabel);
-      doc.moveDown(0.2);
-      doc.moveTo(50, doc.y).lineTo(300, doc.y).strokeColor('#e0e0e0').stroke();
-      doc.moveDown(0.4);
-
-      creative.comments.forEach(comment => {
-        const date = new Date(comment.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#333').text(`${comment.author}`, { continued: true });
-        doc.font('Helvetica').fillColor('#999').text(`  ·  ${date}`);
-        doc.fontSize(9).font('Helvetica').fillColor(comment.resolved ? '#999' : '#555').text(comment.text);
-        if (comment.resolved) {
-          doc.fontSize(8).fillColor('#22c55e').text('✓ Resolved');
-        }
+      // Comments
+      if (creative.comments.length > 0) {
+        doc.moveDown(0.3);
+        const resolvedCount = creative.comments.filter(c => c.resolved).length;
+        const commLabel = `Comments (${creative.comments.length}${resolvedCount > 0 ? `, ${resolvedCount} resolved` : ''})`;
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333').text(commLabel);
+        doc.moveDown(0.2);
+        doc.moveTo(50, doc.y).lineTo(300, doc.y).strokeColor('#e0e0e0').stroke();
         doc.moveDown(0.4);
-      });
-    }
-  });
 
-  doc.end();
+        creative.comments.forEach(comment => {
+          const date = new Date(comment.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#333').text(`${comment.author}`, { continued: true });
+          doc.font('Helvetica').fillColor('#999').text(`  ·  ${date}`);
+          doc.fontSize(9).font('Helvetica').fillColor(comment.resolved ? '#999' : '#555').text(comment.text);
+          if (comment.resolved) {
+            doc.fontSize(8).fillColor('#22c55e').text('✓ Resolved');
+          }
+          doc.moveDown(0.4);
+        });
+      }
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error('PDF generation failed:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'PDF generation failed. Try again or contact support.' });
+    }
+  }
 });
 
 // Update project (archive/unarchive, rename)
