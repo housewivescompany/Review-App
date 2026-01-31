@@ -807,7 +807,14 @@ function setupZoom() {
   wrapper.addEventListener('dblclick', (e) => {
     if (!creative || creative.mediaType !== 'image') return;
     if (e.target.closest('.pin-marker')) return;
+    if (pinMode) return;
     resetZoom();
+  });
+
+  // Pin placement click — permanent handler, checks pinMode flag
+  wrapper.addEventListener('click', (e) => {
+    if (!pinMode) return;
+    handlePinClick(e);
   });
 
   // Touch pinch-to-zoom
@@ -900,11 +907,9 @@ function enterPinMode() {
   pinMode = true;
   const wrapper = document.getElementById('media-wrapper');
   wrapper.classList.add('pin-mode');
+  wrapper.style.cursor = 'crosshair';
   document.getElementById('pin-mode-btn').classList.add('active');
   showToast('Click on the image to place a pin');
-
-  // One-time click handler on the wrapper
-  wrapper.addEventListener('click', handlePinClick, { once: true });
 }
 
 function handlePinClick(e) {
@@ -940,6 +945,7 @@ function handlePinClick(e) {
 
   // Exit pin mode, show indicator in comment form
   wrapper.classList.remove('pin-mode');
+  wrapper.style.cursor = zoomLevel > 1 ? 'grab' : '';
   document.getElementById('pin-mode-btn').classList.remove('active');
   pinMode = false;
 
@@ -953,16 +959,16 @@ function cancelPin() {
   pendingPin = null;
   pinMode = false;
   const wrapper = document.getElementById('media-wrapper');
-  if (wrapper) wrapper.classList.remove('pin-mode');
+  if (wrapper) {
+    wrapper.classList.remove('pin-mode');
+    wrapper.style.cursor = zoomLevel > 1 ? 'grab' : '';
+  }
   const btn = document.getElementById('pin-mode-btn');
   if (btn) btn.classList.remove('active');
   const indicator = document.getElementById('pin-indicator');
   if (indicator) indicator.style.display = 'none';
   const pendingMarker = document.getElementById('pending-pin-marker');
   if (pendingMarker) pendingMarker.remove();
-  // Re-remove click handler if pin mode was cancelled
-  const w = document.getElementById('media-wrapper');
-  if (w) w.removeEventListener('click', handlePinClick);
 }
 
 function renderPins() {
