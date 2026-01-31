@@ -792,7 +792,9 @@ function setupZoom() {
   }, { passive: false });
 
   // Pan with mouse drag when zoomed
+  let didPan = false;
   wrapper.addEventListener('mousedown', (e) => {
+    didPan = false;
     if (zoomLevel <= 1 || pinMode) return;
     if (e.target.closest('.pin-marker') || e.target.tagName === 'VIDEO') return;
     isPanning = true;
@@ -804,6 +806,7 @@ function setupZoom() {
 
   window.addEventListener('mousemove', (e) => {
     if (!isPanning) return;
+    didPan = true;
     const wrapper = document.getElementById('media-wrapper');
     panX = e.clientX - panStartX;
     panY = e.clientY - panStartY;
@@ -827,10 +830,16 @@ function setupZoom() {
     resetZoom();
   });
 
-  // Pin placement click — permanent handler, checks pinMode flag
+  // Click handler — pin placement or open fullscreen
   wrapper.addEventListener('click', (e) => {
-    if (!pinMode) return;
-    handlePinClick(e);
+    if (pinMode) { handlePinClick(e); return; }
+    // Open fullscreen on image tap (not when zoomed/panning/clicking pins)
+    if (!isFullscreen && !didPan && zoomLevel <= 1
+        && creative && creative.mediaType === 'image'
+        && !e.target.closest('.pin-marker')
+        && !e.target.closest('.fullscreen-close-btn')) {
+      toggleFullscreen();
+    }
   });
 
   // Touch pinch-to-zoom + single-finger pan
@@ -842,6 +851,7 @@ function setupZoom() {
 
   wrapper.addEventListener('touchstart', (e) => {
     if (!creative || creative.mediaType !== 'image') return;
+    didPan = false;
 
     if (e.touches.length === 2) {
       // Two-finger pinch-to-zoom — lock touch actions immediately
@@ -867,6 +877,7 @@ function setupZoom() {
     if (e.touches.length === 2 && lastTouchDist > 0) {
       // Pinch-to-zoom
       e.preventDefault();
+      didPan = true;
       isTouchPanning = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -878,6 +889,7 @@ function setupZoom() {
     } else if (e.touches.length === 1 && isTouchPanning) {
       // Single-finger pan
       e.preventDefault();
+      didPan = true;
       panX = e.touches[0].clientX - touchPanStartX;
       panY = e.touches[0].clientY - touchPanStartY;
       constrainPan(wrapper);
