@@ -932,6 +932,25 @@ function resetZoom() {
   applyZoom();
 }
 
+// ─── Fullscreen Image View ────────────────────────────────────
+let isFullscreen = false;
+
+function toggleFullscreen() {
+  const panel = document.querySelector('.media-panel');
+  const closeBtn = document.getElementById('fullscreen-close-btn');
+  if (!panel) return;
+
+  isFullscreen = !isFullscreen;
+  panel.classList.toggle('fullscreen', isFullscreen);
+  closeBtn.style.display = isFullscreen ? '' : 'none';
+
+  // Lock body scroll when fullscreen
+  document.body.style.overflow = isFullscreen ? 'hidden' : '';
+
+  // Reset zoom when entering/exiting
+  resetZoom();
+}
+
 function zoomIn() {
   if (!creative || creative.mediaType !== 'image') return;
   const wrapper = document.getElementById('media-wrapper');
