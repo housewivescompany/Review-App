@@ -707,6 +707,7 @@ a:hover {
   background: var(--bg);
   display: flex;
   flex-direction: column;
+  max-height: none;
 }
 
 .media-panel.fullscreen .media-wrapper {
