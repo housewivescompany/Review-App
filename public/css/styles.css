@@ -699,6 +699,51 @@ a:hover {
   touch-action: pan-x pan-y;
 }
 
+/* ─── Fullscreen Image View ─────────────────────────────── */
+.media-panel.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+}
+
+.media-panel.fullscreen .media-wrapper {
+  touch-action: none;
+}
+
+.media-panel.fullscreen .media-nav-arrow {
+  z-index: 10001;
+}
+
+.media-panel.fullscreen .media-toolbar {
+  z-index: 10000;
+}
+
+.fullscreen-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10002;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+}
+
+.fullscreen-close-btn:hover {
+  background: rgba(0,0,0,0.8);
+}
+
 .media-container {
   width: 100%;
   height: 100%;

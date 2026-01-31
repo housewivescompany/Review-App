@@ -898,8 +898,19 @@ function setupZoom() {
 function constrainPan(wrapper) {
   if (zoomLevel <= 1) { panX = 0; panY = 0; return; }
   const rect = wrapper.getBoundingClientRect();
-  const maxX = (rect.width * (zoomLevel - 1)) / 2;
-  const maxY = (rect.height * (zoomLevel - 1)) / 2;
+
+  // Use actual image dimensions for accurate constraints
+  const img = document.querySelector('#media-container .media-content');
+  let contentW = rect.width;
+  let contentH = rect.height;
+  if (img && (img.tagName === 'IMG' || img.tagName === 'VIDEO')) {
+    contentW = img.offsetWidth;
+    contentH = img.offsetHeight;
+  }
+
+  // Max pan = how far the zoomed content overflows the viewport on each side
+  const maxX = Math.max(0, (contentW * zoomLevel - rect.width) / 2);
+  const maxY = Math.max(0, (contentH * zoomLevel - rect.height) / 2);
   panX = Math.max(-maxX, Math.min(maxX, panX));
   panY = Math.max(-maxY, Math.min(maxY, panY));
 }
@@ -930,6 +941,25 @@ function resetZoom() {
   panX = 0;
   panY = 0;
   applyZoom();
+}
+
+// ─── Fullscreen Image View ────────────────────────────────────
+let isFullscreen = false;
+
+function toggleFullscreen() {
+  const panel = document.querySelector('.media-panel');
+  const closeBtn = document.getElementById('fullscreen-close-btn');
+  if (!panel) return;
+
+  isFullscreen = !isFullscreen;
+  panel.classList.toggle('fullscreen', isFullscreen);
+  closeBtn.style.display = isFullscreen ? '' : 'none';
+
+  // Lock body scroll when fullscreen
+  document.body.style.overflow = isFullscreen ? 'hidden' : '';
+
+  // Reset zoom when entering/exiting
+  resetZoom();
 }
 
 function zoomIn() {

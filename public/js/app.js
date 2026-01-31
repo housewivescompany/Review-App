@@ -334,6 +334,14 @@ function openCreativeReview(projectId, creativeId) {
   window.location.href = `/review/${projectId}/${creativeId}`;
 }
 
+function downloadAllCreatives() {
+  if (!currentProjectId) return;
+  showToast('Preparing download...');
+  const link = document.createElement('a');
+  link.href = `/api/projects/${currentProjectId}/download-all`;
+  link.click();
+}
+
 function copyShareLink() {
   const url = `${window.location.origin}/review/${currentProjectId}`;
   navigator.clipboard.writeText(url).then(() => {
