@@ -286,6 +286,15 @@ function parseUrl() {
   }
 }
 
+// ─── PDF Export ──────────────────────────────────────────────
+function downloadPDF() {
+  if (!projectId) return;
+  showToast('Generating PDF...');
+  const link = document.createElement('a');
+  link.href = `/api/projects/${projectId}/export-pdf`;
+  link.click();
+}
+
 // ─── Project Overview ─────────────────────────────────────────
 async function loadProjectOverview() {
   try {
