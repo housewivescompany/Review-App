@@ -21,6 +21,11 @@
           <span id="brand-name" class="brand-name-text">ReviewFlow</span>
         </a>
         <div id="nav-controls" class="nav-controls" style="display:none;">
+          <a id="back-to-all" class="btn btn-sm btn-ghost" href="#" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
+            All
+          </a>
+          <span class="nav-divider" id="nav-divider" style="display:none;"></span>
           <button class="btn btn-sm btn-ghost" id="prev-btn" onclick="navigateCreative(-1)" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
             Previous
@@ -70,22 +75,31 @@
         <button class="media-nav-arrow media-nav-left" id="media-prev-btn" onclick="navigateCreative(-1)" style="display:none;" title="Previous">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
         </button>
-        <div id="media-container" class="media-container">
-          <!-- Filled by JS -->
+        <div id="media-wrapper" class="media-wrapper">
+          <div id="media-container" class="media-container">
+            <!-- Filled by JS -->
+          </div>
+          <div id="pin-overlay" class="pin-overlay"></div>
         </div>
         <button class="media-nav-arrow media-nav-right" id="media-next-btn" onclick="navigateCreative(1)" style="display:none;" title="Next">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
         </button>
-        <div class="media-filename" id="media-filename"></div>
+        <div class="media-toolbar">
+          <div class="media-filename" id="media-filename"></div>
+          <div class="media-tools">
+            <button class="media-tool-btn" id="zoom-reset-btn" onclick="resetZoom()" style="display:none;" title="Reset zoom">
+              <span id="zoom-level">100%</span>
+            </button>
+            <button class="media-tool-btn" id="toggle-pins-btn" onclick="togglePinsVisibility()" style="display:none;" title="Toggle pins">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              <span id="pin-count-label"></span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Sidebar -->
       <div class="review-sidebar">
-        <!-- Back to all -->
-        <a id="back-to-all" class="back-to-all" href="#" style="display:none;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
-          View All Creatives
-        </a>
         <!-- Status Banner -->
         <div id="status-banner" class="status-banner status-pending">
           <span id="status-icon"></span>
@@ -169,11 +183,22 @@
                 <button class="link-btn" id="signout-btn" onclick="signOut()" style="display:none;">Sign Out</button>
               </span>
             </div>
+            <div id="pin-indicator" class="pin-indicator" style="display:none;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3" fill="var(--bg-elevated)"></circle></svg>
+              <span id="pin-indicator-text">Pin #1</span>
+              <button class="pin-indicator-cancel" onclick="cancelPin()">&times;</button>
+            </div>
             <textarea id="comment-text" class="input-field textarea" rows="2" placeholder="Leave a comment..."></textarea>
-            <button class="btn btn-primary btn-sm" onclick="addComment()">
+            <div class="comment-form-actions">
+              <button class="btn btn-ghost btn-sm pin-mode-btn" id="pin-mode-btn" onclick="enterPinMode()" title="Click to place a pin on the image, then add your comment">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                Pin
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="addComment()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
               Post Comment
-            </button>
+              </button>
+            </div>
           </div>
         </div>
       </div>

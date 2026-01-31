@@ -650,6 +650,12 @@ app.post('/api/projects/:projectId/creatives/:creativeId/comments', (req, res) =
     createdAt: new Date().toISOString()
   };
 
+  // Support pin annotations (optional x/y as percentages)
+  if (req.body.pinX !== undefined && req.body.pinY !== undefined) {
+    comment.pinX = parseFloat(req.body.pinX);
+    comment.pinY = parseFloat(req.body.pinY);
+  }
+
   creative.comments.push(comment);
   writeProjects(projects);
   res.status(201).json(comment);
