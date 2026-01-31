@@ -6,6 +6,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const PDFDocument = require('pdfkit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -453,6 +454,145 @@ app.get('/api/projects/:projectId', (req, res) => {
   res.json(project);
 });
 
+// Export project as PDF
+app.get('/api/projects/:projectId/export-pdf', (req, res) => {
+  const projects = readProjects();
+  const project = projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const doc = new PDFDocument({
+    size: 'letter',
+    margin: 50,
+    info: {
+      Title: `${project.name} - Creative Review`,
+      Author: readSettings().brandName || 'ReviewFlow'
+    }
+  });
+
+  const safeName = project.name.replace(/[^a-zA-Z0-9_\- ]/g, '_');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}_review.pdf"`);
+  doc.pipe(res);
+
+  const pageW = 512; // usable width (612 - 2*50)
+
+  // ── Cover Page ──
+  doc.moveDown(4);
+  doc.fontSize(28).font('Helvetica-Bold').fillColor('#000').text(project.name, { align: 'center' });
+  doc.moveDown(0.5);
+  if (project.clientName) {
+    doc.fontSize(14).font('Helvetica').fillColor('#666').text(`Client: ${project.clientName}`, { align: 'center' });
+  }
+  doc.moveDown(1);
+  doc.fontSize(11).fillColor('#999').text(
+    `Exported ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+    { align: 'center' }
+  );
+
+  doc.moveDown(2);
+  doc.moveTo(50, doc.y).lineTo(562, doc.y).strokeColor('#ddd').stroke();
+  doc.moveDown(1.5);
+
+  const total = project.creatives.length;
+  const approved = project.creatives.filter(c => c.status === 'approved').length;
+  const pending = project.creatives.filter(c => c.status === 'pending').length;
+  const revision = project.creatives.filter(c => c.status === 'revision_requested').length;
+
+  doc.fontSize(14).font('Helvetica-Bold').fillColor('#333').text(
+    `${total} Creative${total !== 1 ? 's' : ''}`, { align: 'center' }
+  );
+  doc.moveDown(0.3);
+  doc.fontSize(11).font('Helvetica').fillColor('#666').text(
+    `${approved} Approved  ·  ${pending} Pending  ·  ${revision} Revision${revision !== 1 ? 's' : ''}`,
+    { align: 'center' }
+  );
+
+  // ── Creative Pages ──
+  const statusColors = { approved: '#22c55e', pending: '#eab308', revision_requested: '#f97316' };
+  const statusLabels = { approved: 'Approved', pending: 'Pending Review', revision_requested: 'Revision Requested' };
+
+  project.creatives.forEach((creative, idx) => {
+    doc.addPage();
+
+    // Title
+    doc.fontSize(18).font('Helvetica-Bold').fillColor('#000');
+    doc.text(creative.title || creative.originalName);
+
+    // Subtitle: number + status
+    doc.moveDown(0.2);
+    doc.fontSize(10).font('Helvetica').fillColor('#999');
+    doc.text(`Creative ${idx + 1} of ${total}`, { continued: true });
+    doc.fillColor(statusColors[creative.status] || '#666');
+    doc.text(`  ·  ${statusLabels[creative.status] || creative.status}`);
+    doc.moveDown(0.8);
+
+    // Image
+    if (creative.mediaType === 'image') {
+      const imgPath = path.join(UPLOADS_DIR, creative.filePath.replace('/uploads/', ''));
+      const ext = path.extname(imgPath).toLowerCase();
+      if (fs.existsSync(imgPath) && ['.jpg', '.jpeg', '.png'].includes(ext)) {
+        try {
+          const img = doc.openImage(imgPath);
+          const maxW = pageW, maxH = 350;
+          const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+          const w = img.width * scale;
+          const h = img.height * scale;
+          const x = 50 + (maxW - w) / 2;
+          doc.image(img, x, doc.y, { width: w, height: h });
+          doc.y += h + 15;
+        } catch {
+          doc.fontSize(10).fillColor('#999').text(`[Could not embed: ${creative.originalName}]`);
+          doc.moveDown(0.5);
+        }
+      } else if (fs.existsSync(imgPath)) {
+        doc.fontSize(10).fillColor('#999').text(`[${creative.originalName} — format not embeddable in PDF]`);
+        doc.moveDown(0.5);
+      } else {
+        doc.fontSize(10).fillColor('#999').text(`[File not found: ${creative.originalName}]`);
+        doc.moveDown(0.5);
+      }
+    } else if (creative.mediaType === 'video') {
+      doc.fontSize(10).fillColor('#999').text(`[Video file: ${creative.originalName}]`);
+      doc.moveDown(0.5);
+    } else if (creative.mediaType === 'pdf') {
+      doc.fontSize(10).fillColor('#999').text(`[PDF document: ${creative.originalName}]`);
+      doc.moveDown(0.5);
+    }
+
+    // Caption
+    if (creative.caption) {
+      doc.moveDown(0.3);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#333').text('Caption');
+      doc.fontSize(10).font('Helvetica').fillColor('#444').text(creative.caption);
+      doc.moveDown(0.5);
+    }
+
+    // Comments
+    if (creative.comments.length > 0) {
+      doc.moveDown(0.3);
+      const resolvedCount = creative.comments.filter(c => c.resolved).length;
+      const commLabel = `Comments (${creative.comments.length}${resolvedCount > 0 ? `, ${resolvedCount} resolved` : ''})`;
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#333').text(commLabel);
+      doc.moveDown(0.2);
+      doc.moveTo(50, doc.y).lineTo(300, doc.y).strokeColor('#e0e0e0').stroke();
+      doc.moveDown(0.4);
+
+      creative.comments.forEach(comment => {
+        const date = new Date(comment.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#333').text(`${comment.author}`, { continued: true });
+        doc.font('Helvetica').fillColor('#999').text(`  ·  ${date}`);
+        doc.fontSize(9).font('Helvetica').fillColor(comment.resolved ? '#999' : '#555').text(comment.text);
+        if (comment.resolved) {
+          doc.fontSize(8).fillColor('#22c55e').text('✓ Resolved');
+        }
+        doc.moveDown(0.4);
+      });
+    }
+  });
+
+  doc.end();
+});
+
 // Update project (archive/unarchive, rename)
 app.patch('/api/projects/:projectId', requireAdmin, (req, res) => {
   const projects = readProjects();
@@ -650,9 +790,40 @@ app.post('/api/projects/:projectId/creatives/:creativeId/comments', (req, res) =
     createdAt: new Date().toISOString()
   };
 
+  // Support pin annotations (optional x/y as percentages)
+  if (req.body.pinX !== undefined && req.body.pinY !== undefined) {
+    comment.pinX = parseFloat(req.body.pinX);
+    comment.pinY = parseFloat(req.body.pinY);
+  }
+
   creative.comments.push(comment);
   writeProjects(projects);
   res.status(201).json(comment);
+});
+
+// Resolve/unresolve a comment
+app.patch('/api/projects/:projectId/creatives/:creativeId/comments/:commentId', (req, res) => {
+  const projects = readProjects();
+  const project = projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const creative = project.creatives.find(c => c.id === req.params.creativeId);
+  if (!creative) return res.status(404).json({ error: 'Creative not found' });
+
+  const comment = creative.comments.find(c => c.id === req.params.commentId);
+  if (!comment) return res.status(404).json({ error: 'Comment not found' });
+
+  if (req.body.resolved !== undefined) {
+    comment.resolved = !!req.body.resolved;
+    if (comment.resolved) {
+      comment.resolvedAt = new Date().toISOString();
+    } else {
+      delete comment.resolvedAt;
+    }
+  }
+
+  writeProjects(projects);
+  res.json(comment);
 });
 
 // Delete a comment

@@ -8,6 +8,16 @@ let currentAuthTab = 'guest';
 let devToken = null;
 let savedTitle = '';
 let savedCaption = '';
+let zoomLevel = 1;
+let panX = 0;
+let panY = 0;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let pinMode = false;
+let pendingPin = null; // { x, y } percentages
+let pinsVisible = false;
+let activePinCommentId = null;
 
 // ─── Identity & Auth ──────────────────────────────────────────
 function getIdentity() {
@@ -209,6 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupKeyboardNav();
   setupModalKeys();
   setupVersionUpload();
+  setupZoom();
 });
 
 // ─── Settings (read-only on review page) ─────────────────────
@@ -273,6 +284,15 @@ function parseUrl() {
       loadProjectOverview();
     }
   }
+}
+
+// ─── PDF Export ──────────────────────────────────────────────
+function downloadPDF() {
+  if (!projectId) return;
+  showToast('Generating PDF...');
+  const link = document.createElement('a');
+  link.href = `/api/projects/${projectId}/export-pdf`;
+  link.click();
 }
 
 // ─── Project Overview ─────────────────────────────────────────
@@ -405,11 +425,13 @@ function renderCreativeReview() {
     if (creativeIndex < project.creatives.length - 1) mediaNext.style.display = 'flex';
   }
 
-  // Back to all creatives link
+  // Back to all creatives link (in header nav)
   const backLink = document.getElementById('back-to-all');
+  const navDivider = document.getElementById('nav-divider');
   if (backLink) {
     backLink.href = `/review/${projectId}`;
     backLink.style.display = 'inline-flex';
+    if (navDivider) navDivider.style.display = '';
     backLink.onclick = (e) => {
       if (hasUnsavedChanges() && !confirm('You have unsaved changes. Leave without saving?')) {
         e.preventDefault();
@@ -445,6 +467,12 @@ function renderCreativeReview() {
 function renderMedia() {
   const container = document.getElementById('media-container');
 
+  // Reset zoom when media changes
+  zoomLevel = 1;
+  panX = 0;
+  panY = 0;
+  applyZoom();
+
   if (creative.mediaType === 'video') {
     container.innerHTML = `
       <video controls preload="metadata" class="media-content">
@@ -457,9 +485,19 @@ function renderMedia() {
       <iframe src="${creative.filePath}" class="media-content media-pdf" title="PDF Preview"></iframe>`;
   } else {
     container.innerHTML = `
-      <img src="${creative.filePath}" alt="${escapeHtml(creative.originalName)}" class="media-content">`;
+      <img src="${creative.filePath}" alt="${escapeHtml(creative.originalName)}" class="media-content" draggable="false">`;
     container.querySelector('img').addEventListener('error', () => showMediaError(container));
   }
+
+  // Show zoom controls for images only
+  const zoomControls = document.getElementById('zoom-controls');
+  if (zoomControls) {
+    zoomControls.style.display = creative.mediaType === 'image' ? 'flex' : 'none';
+  }
+
+  // Render pin markers
+  activePinCommentId = null;
+  renderPins();
 }
 
 function showMediaError(container) {
@@ -553,18 +591,36 @@ function renderComments() {
     return;
   }
 
-  list.innerHTML = creative.comments.map(c => `
-    <div class="comment">
+  const pinnedComments = creative.comments.filter(c => c.pinX !== undefined);
+  let pinNum = 0;
+  list.innerHTML = creative.comments.map(c => {
+    const isPinned = c.pinX !== undefined && c.pinY !== undefined;
+    if (isPinned) pinNum++;
+    const pinBadge = isPinned ? `<span class="comment-pin-badge" onclick="focusPin('${c.id}')" title="Show pin on image">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path></svg>
+      ${pinNum}</span>` : '';
+    const isResolved = !!c.resolved;
+    const resolvedBadge = isResolved ? '<span class="comment-resolved-badge">Resolved</span>' : '';
+    const resolveBtn = `<button class="comment-resolve-btn ${isResolved ? 'resolved' : ''}" onclick="resolveComment('${c.id}')" title="${isResolved ? 'Unresolve' : 'Mark as resolved'}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </button>`;
+    return `
+    <div class="comment ${isPinned ? 'comment-pinned' : ''} ${isResolved ? 'comment-resolved' : ''}" id="comment-${c.id}" data-comment-id="${c.id}">
       <div class="comment-header">
+        ${pinBadge}
         <strong class="comment-author">${escapeHtml(c.author)}</strong>
+        ${resolvedBadge}
         <span class="comment-date">${formatDate(c.createdAt)}</span>
-        <button class="comment-delete" onclick="deleteComment('${c.id}')" title="Delete comment">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
+        <div class="comment-actions">
+          ${resolveBtn}
+          <button class="comment-delete" onclick="deleteComment('${c.id}')" title="Delete comment">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
       </div>
       <p class="comment-text">${escapeHtml(c.text)}</p>
     </div>
-  `).join('');
+  `;}).join('');
 
   // Scroll to bottom of comments
   list.scrollTop = list.scrollHeight;
@@ -586,16 +642,23 @@ async function addComment() {
   }
 
   try {
+    const body = { author, text };
+    if (pendingPin) {
+      body.pinX = pendingPin.x;
+      body.pinY = pendingPin.y;
+    }
     const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ author, text })
+      body: JSON.stringify(body)
     });
     const comment = await res.json();
     creative.comments.push(comment);
+    cancelPin();
     renderComments();
+    renderPins();
     document.getElementById('comment-text').value = '';
-    showToast('Comment posted');
+    showToast(body.pinX !== undefined ? 'Pin comment posted' : 'Comment posted');
   } catch (err) {
     showToast('Failed to post comment', 'error');
   }
@@ -607,9 +670,34 @@ async function deleteComment(commentId) {
       method: 'DELETE'
     });
     creative.comments = creative.comments.filter(c => c.id !== commentId);
+    if (activePinCommentId === commentId) activePinCommentId = null;
     renderComments();
+    renderPins();
   } catch (err) {
     showToast('Failed to delete comment', 'error');
+  }
+}
+
+async function resolveComment(commentId) {
+  const comment = creative.comments.find(c => c.id === commentId);
+  if (!comment) return;
+
+  const newResolved = !comment.resolved;
+  try {
+    const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}/comments/${commentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolved: newResolved })
+    });
+    const updated = await res.json();
+    const idx = creative.comments.findIndex(c => c.id === commentId);
+    if (idx !== -1) {
+      creative.comments[idx] = { ...creative.comments[idx], ...updated };
+    }
+    renderComments();
+    showToast(newResolved ? 'Comment resolved' : 'Comment unresolved');
+  } catch (err) {
+    showToast('Failed to update comment', 'error');
   }
 }
 
@@ -639,6 +727,8 @@ function setupKeyboardNav() {
 
     if (e.key === 'ArrowLeft') navigateCreative(-1);
     if (e.key === 'ArrowRight') navigateCreative(1);
+    if (e.key === '+' || e.key === '=') zoomIn();
+    if (e.key === '-') zoomOut();
   });
 }
 
@@ -658,6 +748,308 @@ function setupModalKeys() {
       }
     }
   });
+}
+
+// ─── Image Zoom ───────────────────────────────────────────────
+function setupZoom() {
+  const wrapper = document.getElementById('media-wrapper');
+  if (!wrapper) return;
+
+  wrapper.addEventListener('wheel', (e) => {
+    if (!creative || creative.mediaType !== 'image') return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    const newZoom = Math.max(1, Math.min(5, zoomLevel + delta));
+    if (newZoom === zoomLevel) return;
+
+    // Zoom toward cursor position
+    const rect = wrapper.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+    const scale = newZoom / zoomLevel;
+    panX = cursorX - scale * (cursorX - panX);
+    panY = cursorY - scale * (cursorY - panY);
+
+    zoomLevel = newZoom;
+    constrainPan(wrapper);
+    applyZoom();
+  }, { passive: false });
+
+  // Pan with mouse drag when zoomed
+  wrapper.addEventListener('mousedown', (e) => {
+    if (zoomLevel <= 1 || pinMode) return;
+    if (e.target.closest('.pin-marker') || e.target.tagName === 'VIDEO') return;
+    isPanning = true;
+    panStartX = e.clientX - panX;
+    panStartY = e.clientY - panY;
+    wrapper.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+    const wrapper = document.getElementById('media-wrapper');
+    panX = e.clientX - panStartX;
+    panY = e.clientY - panStartY;
+    constrainPan(wrapper);
+    applyZoom();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isPanning) {
+      isPanning = false;
+      const wrapper = document.getElementById('media-wrapper');
+      if (wrapper) wrapper.style.cursor = zoomLevel > 1 ? 'grab' : '';
+    }
+  });
+
+  // Double-click to reset
+  wrapper.addEventListener('dblclick', (e) => {
+    if (!creative || creative.mediaType !== 'image') return;
+    if (e.target.closest('.pin-marker')) return;
+    resetZoom();
+  });
+
+  // Touch pinch-to-zoom
+  let lastTouchDist = 0;
+  let touchStartZoom = 1;
+
+  wrapper.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2 && creative && creative.mediaType === 'image') {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+      touchStartZoom = zoomLevel;
+    }
+  }, { passive: false });
+
+  wrapper.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && creative && creative.mediaType === 'image' && lastTouchDist > 0) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / lastTouchDist;
+      zoomLevel = Math.max(1, Math.min(5, touchStartZoom * scale));
+      constrainPan(wrapper);
+      applyZoom();
+    }
+  }, { passive: false });
+
+  wrapper.addEventListener('touchend', () => {
+    lastTouchDist = 0;
+  });
+}
+
+function constrainPan(wrapper) {
+  if (zoomLevel <= 1) { panX = 0; panY = 0; return; }
+  const rect = wrapper.getBoundingClientRect();
+  const maxX = (rect.width * (zoomLevel - 1)) / 2;
+  const maxY = (rect.height * (zoomLevel - 1)) / 2;
+  panX = Math.max(-maxX, Math.min(maxX, panX));
+  panY = Math.max(-maxY, Math.min(maxY, panY));
+}
+
+function applyZoom() {
+  const container = document.getElementById('media-container');
+  const overlay = document.getElementById('pin-overlay');
+  const wrapper = document.getElementById('media-wrapper');
+  if (!container) return;
+
+  const transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+  container.style.transform = transform;
+  if (overlay) overlay.style.transform = transform;
+
+  const zoomLevelEl = document.getElementById('zoom-level');
+  if (zoomLevelEl) {
+    zoomLevelEl.textContent = `${Math.round(zoomLevel * 100)}%`;
+  }
+  if (wrapper) wrapper.style.cursor = zoomLevel > 1 ? 'grab' : '';
+}
+
+function resetZoom() {
+  zoomLevel = 1;
+  panX = 0;
+  panY = 0;
+  applyZoom();
+}
+
+function zoomIn() {
+  if (!creative || creative.mediaType !== 'image') return;
+  const wrapper = document.getElementById('media-wrapper');
+  zoomLevel = Math.min(5, zoomLevel + 0.5);
+  constrainPan(wrapper);
+  applyZoom();
+}
+
+function zoomOut() {
+  if (!creative || creative.mediaType !== 'image') return;
+  const wrapper = document.getElementById('media-wrapper');
+  zoomLevel = Math.max(1, zoomLevel - 0.5);
+  constrainPan(wrapper);
+  applyZoom();
+}
+
+// ─── Pin Annotations ──────────────────────────────────────────
+function enterPinMode() {
+  if (!creative || creative.mediaType !== 'image') {
+    showToast('Pins can only be placed on images', 'error');
+    return;
+  }
+  pinMode = true;
+  const wrapper = document.getElementById('media-wrapper');
+  wrapper.classList.add('pin-mode');
+  document.getElementById('pin-mode-btn').classList.add('active');
+  showToast('Click on the image to place a pin');
+
+  // One-time click handler on the wrapper
+  wrapper.addEventListener('click', handlePinClick, { once: true });
+}
+
+function handlePinClick(e) {
+  if (!pinMode) return;
+  const wrapper = document.getElementById('media-wrapper');
+  const rect = wrapper.getBoundingClientRect();
+
+  // Calculate position as percentage, accounting for zoom and pan
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+  const imgX = (clickX - panX) / zoomLevel;
+  const imgY = (clickY - panY) / zoomLevel;
+  const pctX = (imgX / rect.width) * 100;
+  const pctY = (imgY / rect.height) * 100;
+
+  if (pctX < 0 || pctX > 100 || pctY < 0 || pctY > 100) {
+    cancelPin();
+    return;
+  }
+
+  pendingPin = { x: Math.round(pctX * 10) / 10, y: Math.round(pctY * 10) / 10 };
+
+  // Show pending pin on overlay
+  const overlay = document.getElementById('pin-overlay');
+  const pinnedCount = creative.comments.filter(c => c.pinX !== undefined).length;
+  const marker = document.createElement('div');
+  marker.className = 'pin-marker pin-marker-pending';
+  marker.style.left = `${pendingPin.x}%`;
+  marker.style.top = `${pendingPin.y}%`;
+  marker.textContent = pinnedCount + 1;
+  marker.id = 'pending-pin-marker';
+  overlay.appendChild(marker);
+
+  // Exit pin mode, show indicator in comment form
+  wrapper.classList.remove('pin-mode');
+  document.getElementById('pin-mode-btn').classList.remove('active');
+  pinMode = false;
+
+  const indicator = document.getElementById('pin-indicator');
+  indicator.style.display = 'flex';
+  document.getElementById('pin-indicator-text').textContent = `Pin #${pinnedCount + 1}`;
+  document.getElementById('comment-text').focus();
+}
+
+function cancelPin() {
+  pendingPin = null;
+  pinMode = false;
+  const wrapper = document.getElementById('media-wrapper');
+  if (wrapper) wrapper.classList.remove('pin-mode');
+  const btn = document.getElementById('pin-mode-btn');
+  if (btn) btn.classList.remove('active');
+  const indicator = document.getElementById('pin-indicator');
+  if (indicator) indicator.style.display = 'none';
+  const pendingMarker = document.getElementById('pending-pin-marker');
+  if (pendingMarker) pendingMarker.remove();
+  // Re-remove click handler if pin mode was cancelled
+  const w = document.getElementById('media-wrapper');
+  if (w) w.removeEventListener('click', handlePinClick);
+}
+
+function renderPins() {
+  const overlay = document.getElementById('pin-overlay');
+  const toggleBtn = document.getElementById('toggle-pins-btn');
+  if (!overlay || !creative) return;
+
+  overlay.innerHTML = '';
+  const pinnedComments = creative.comments.filter(c => c.pinX !== undefined && c.pinY !== undefined);
+
+  if (toggleBtn) {
+    if (pinnedComments.length > 0) {
+      toggleBtn.style.display = 'inline-flex';
+      toggleBtn.title = pinsVisible ? 'Hide all pins' : 'Show all pins';
+      document.getElementById('pin-count-label').textContent = pinnedComments.length;
+    } else {
+      toggleBtn.style.display = 'none';
+    }
+  }
+
+  pinnedComments.forEach((c, i) => {
+    const marker = document.createElement('div');
+    marker.className = 'pin-marker';
+    marker.style.left = `${c.pinX}%`;
+    marker.style.top = `${c.pinY}%`;
+    marker.textContent = i + 1;
+    marker.dataset.commentId = c.id;
+    marker.title = `${c.author}: ${c.text.substring(0, 60)}${c.text.length > 60 ? '...' : ''}`;
+
+    // Show pin if "show all" is on, or if this is the active pin
+    if (pinsVisible || c.id === activePinCommentId) {
+      marker.style.display = '';
+      if (c.id === activePinCommentId) marker.classList.add('pin-active');
+    } else {
+      marker.style.display = 'none';
+    }
+
+    marker.addEventListener('click', (e) => {
+      e.stopPropagation();
+      focusPin(c.id);
+    });
+    marker.addEventListener('mouseenter', () => {
+      const commentEl = document.getElementById(`comment-${c.id}`);
+      if (commentEl) commentEl.classList.add('comment-highlight');
+    });
+    marker.addEventListener('mouseleave', () => {
+      const commentEl = document.getElementById(`comment-${c.id}`);
+      if (commentEl) commentEl.classList.remove('comment-highlight');
+    });
+    overlay.appendChild(marker);
+  });
+}
+
+function focusPin(commentId) {
+  // Toggle off if clicking the same pin
+  if (activePinCommentId === commentId) {
+    activePinCommentId = null;
+    renderPins();
+    const commentEl = document.getElementById(`comment-${commentId}`);
+    if (commentEl) commentEl.classList.remove('comment-highlight');
+    return;
+  }
+
+  // Remove previous highlight
+  if (activePinCommentId) {
+    const prevComment = document.getElementById(`comment-${activePinCommentId}`);
+    if (prevComment) prevComment.classList.remove('comment-highlight');
+  }
+
+  // Activate this pin
+  activePinCommentId = commentId;
+  renderPins();
+
+  // Scroll to and highlight comment
+  const commentEl = document.getElementById(`comment-${commentId}`);
+  if (commentEl) {
+    commentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    commentEl.classList.add('comment-highlight');
+  }
+}
+
+function togglePinsVisibility() {
+  pinsVisible = !pinsVisible;
+  if (!pinsVisible) activePinCommentId = null;
+  const btn = document.getElementById('toggle-pins-btn');
+  btn.classList.toggle('active', pinsVisible);
+  renderPins();
 }
 
 // ─── Version Management ───────────────────────────────────────

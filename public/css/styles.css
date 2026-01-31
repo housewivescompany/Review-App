@@ -55,9 +55,22 @@
   background: #e4e4e8;
 }
 
-[data-theme="light"] .media-filename {
+[data-theme="light"] .media-toolbar {
   background: rgba(0,0,0,0.05);
+}
+
+[data-theme="light"] .media-filename {
   color: var(--text-secondary);
+}
+
+[data-theme="light"] .media-tool-btn {
+  background: rgba(0,0,0,0.08);
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .media-tool-btn:hover {
+  background: rgba(0,0,0,0.15);
+  color: var(--text);
 }
 
 [data-theme="light"] .modal-overlay {
@@ -679,13 +692,21 @@ a:hover {
   min-width: 0;
 }
 
-.media-container {
+.media-wrapper {
   flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.media-container {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
   padding: 20px;
+  transform-origin: center center;
+  transition: none;
 }
 
 .media-content {
@@ -709,14 +730,208 @@ img.media-content {
   object-fit: contain;
 }
 
+.media-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: rgba(0,0,0,0.5);
+  gap: 8px;
+}
+
 .media-filename {
-  padding: 8px 20px;
   font-size: 0.78rem;
   color: var(--text-muted);
-  background: rgba(0,0,0,0.5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.media-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.media-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  font-size: 0.72rem;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+
+.media-tool-btn:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
+
+.media-tool-btn.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* ─── Zoom Controls ──────────────────────────────────────── */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ─── Pin Overlay ────────────────────────────────────────── */
+.pin-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: center center;
+  z-index: 5;
+}
+
+.pin-overlay .pin-marker {
+  pointer-events: auto;
+}
+
+.media-wrapper.pin-mode {
+  cursor: crosshair;
+}
+
+.media-wrapper.pin-mode .pin-overlay {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.pin-marker {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  opacity: 0.8;
+  transition: all 150ms ease;
+  z-index: 10;
+}
+
+.pin-marker:hover {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.2);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.5);
+}
+
+.pin-marker.pin-active {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.3);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.4), 0 3px 12px rgba(0,0,0,0.5);
+}
+
+.pin-marker-pending {
+  opacity: 1;
+  animation: pin-pulse 1s infinite;
+}
+
+@keyframes pin-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+}
+
+/* ─── Pin Indicator in Comment Form ──────────────────────── */
+.pin-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.pin-indicator-cancel {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 2px;
+  margin-left: auto;
+}
+
+.pin-indicator-cancel:hover {
+  color: var(--text);
+}
+
+/* ─── Comment Form Actions ───────────────────────────────── */
+.comment-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.pin-mode-btn {
+  gap: 4px;
+  font-size: 0.78rem;
+}
+
+.pin-mode-btn.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* ─── Pinned Comment Styles ──────────────────────────────── */
+.comment-pin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 4px;
+}
+
+.comment-pin-badge:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.comment-pin-badge svg {
+  flex-shrink: 0;
+}
+
+.comment-highlight {
+  background: var(--accent-bg) !important;
+  border-left: 2px solid var(--accent);
+  transition: all 300ms ease;
+}
+
+/* ─── Nav Divider ────────────────────────────────────────── */
+.nav-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
 }
 
 /* ─── Review Sidebar ──────────────────────────────────────── */
@@ -868,15 +1083,23 @@ img.media-content {
   color: var(--text-muted);
 }
 
+.comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
 .comment-delete {
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   padding: 2px;
-  margin-left: auto;
   opacity: 0;
   transition: opacity var(--transition);
+  display: flex;
+  align-items: center;
 }
 
 .comment:hover .comment-delete {
@@ -885,6 +1108,45 @@ img.media-content {
 
 .comment-delete:hover {
   color: var(--red);
+}
+
+/* ─── Resolve Comment ────────────────────────────────────── */
+.comment-resolve-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+  display: flex;
+  align-items: center;
+}
+
+.comment:hover .comment-resolve-btn {
+  opacity: 1;
+}
+
+.comment-resolve-btn.resolved {
+  color: var(--green);
+  opacity: 1;
+}
+
+.comment-resolve-btn:hover {
+  color: var(--green);
+}
+
+.comment-resolved {
+  opacity: 0.6;
+}
+
+.comment-resolved-badge {
+  font-size: 0.68rem;
+  color: var(--green);
+  background: var(--green-bg);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
 }
 
 .comment-text {
@@ -1638,21 +1900,6 @@ img.media-content {
 }
 
 /* ─── Back to All Link ───────────────────────────────────── */
-.back-to-all {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  text-decoration: none;
-  margin-bottom: 8px;
-  transition: color var(--transition);
-}
-
-.back-to-all:hover {
-  color: var(--accent);
-}
-
 /* ─── Admin Login Screen ─────────────────────────────────── */
 .admin-login {
   display: flex;
