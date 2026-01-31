@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const PDFDocument = require('pdfkit');
 const sharp = require('sharp');
+const archiver = require('archiver');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -606,6 +607,48 @@ app.get('/api/projects/:projectId/export-pdf', async (req, res) => {
       res.status(500).json({ error: 'PDF generation failed. Try again or contact support.' });
     }
   }
+});
+
+// Download all creatives as zip
+app.get('/api/projects/:projectId/download-all', (req, res) => {
+  const projects = readProjects();
+  const project = projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const safeName = project.name.replace(/[^a-zA-Z0-9_\- ]/g, '_');
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}_creatives.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 5 } });
+  archive.on('error', (err) => {
+    console.error('Archive error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Download failed' });
+  });
+  archive.pipe(res);
+
+  project.creatives.forEach(creative => {
+    const filePath = path.join(UPLOADS_DIR, creative.filePath.replace('/uploads/', ''));
+    if (fs.existsSync(filePath)) {
+      archive.file(filePath, { name: creative.title ? `${creative.title}${path.extname(creative.originalName)}` : creative.originalName });
+    }
+  });
+
+  archive.finalize();
+});
+
+// Download single creative file
+app.get('/api/projects/:projectId/creatives/:creativeId/download', (req, res) => {
+  const projects = readProjects();
+  const project = projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const creative = project.creatives.find(c => c.id === req.params.creativeId);
+  if (!creative) return res.status(404).json({ error: 'Creative not found' });
+
+  const filePath = path.join(UPLOADS_DIR, creative.filePath.replace('/uploads/', ''));
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+
+  res.download(filePath, creative.originalName);
 });
 
 // Update project (archive/unarchive, rename)
