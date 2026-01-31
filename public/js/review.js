@@ -917,11 +917,13 @@ function handlePinClick(e) {
   const wrapper = document.getElementById('media-wrapper');
   const rect = wrapper.getBoundingClientRect();
 
-  // Calculate position as percentage, accounting for zoom and pan
+  // Calculate position as percentage, accounting for zoom, pan, and center-origin transform
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
-  const imgX = (clickX - panX) / zoomLevel;
-  const imgY = (clickY - panY) / zoomLevel;
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const imgX = (clickX - panX - cx) / zoomLevel + cx;
+  const imgY = (clickY - panY - cy) / zoomLevel + cy;
   const pctX = (imgX / rect.width) * 100;
   const pctY = (imgY / rect.height) * 100;
 
