@@ -295,6 +295,22 @@ function downloadPDF() {
   link.click();
 }
 
+// ─── Download Creatives ──────────────────────────────────────
+function downloadAllCreatives() {
+  if (!projectId) return;
+  showToast('Preparing download...');
+  const link = document.createElement('a');
+  link.href = `/api/projects/${projectId}/download-all`;
+  link.click();
+}
+
+function downloadCreative() {
+  if (!projectId || !creativeId) return;
+  const link = document.createElement('a');
+  link.href = `/api/projects/${projectId}/creatives/${creativeId}/download`;
+  link.click();
+}
+
 // ─── Project Overview ─────────────────────────────────────────
 async function loadProjectOverview() {
   try {
@@ -817,23 +833,40 @@ function setupZoom() {
     handlePinClick(e);
   });
 
-  // Touch pinch-to-zoom
+  // Touch pinch-to-zoom + single-finger pan
   let lastTouchDist = 0;
   let touchStartZoom = 1;
+  let isTouchPanning = false;
+  let touchPanStartX = 0;
+  let touchPanStartY = 0;
 
   wrapper.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2 && creative && creative.mediaType === 'image') {
+    if (!creative || creative.mediaType !== 'image') return;
+
+    if (e.touches.length === 2) {
+      // Two-finger pinch-to-zoom
       e.preventDefault();
+      isTouchPanning = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       lastTouchDist = Math.sqrt(dx * dx + dy * dy);
       touchStartZoom = zoomLevel;
+    } else if (e.touches.length === 1 && zoomLevel > 1 && !pinMode) {
+      // Single-finger pan when zoomed in
+      isTouchPanning = true;
+      touchPanStartX = e.touches[0].clientX - panX;
+      touchPanStartY = e.touches[0].clientY - panY;
+      e.preventDefault();
     }
   }, { passive: false });
 
   wrapper.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2 && creative && creative.mediaType === 'image' && lastTouchDist > 0) {
+    if (!creative || creative.mediaType !== 'image') return;
+
+    if (e.touches.length === 2 && lastTouchDist > 0) {
+      // Pinch-to-zoom
       e.preventDefault();
+      isTouchPanning = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -841,11 +874,19 @@ function setupZoom() {
       zoomLevel = Math.max(1, Math.min(5, touchStartZoom * scale));
       constrainPan(wrapper);
       applyZoom();
+    } else if (e.touches.length === 1 && isTouchPanning) {
+      // Single-finger pan
+      e.preventDefault();
+      panX = e.touches[0].clientX - touchPanStartX;
+      panY = e.touches[0].clientY - touchPanStartY;
+      constrainPan(wrapper);
+      applyZoom();
     }
   }, { passive: false });
 
   wrapper.addEventListener('touchend', () => {
     lastTouchDist = 0;
+    isTouchPanning = false;
   });
 }
 
