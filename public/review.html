@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Creative Review - ReviewFlow</title>
   <link rel="stylesheet" href="/css/styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
 </head>
 <body>
   <div id="app">
@@ -21,7 +20,7 @@
           <img id="logo-custom-img" class="logo-img" style="display:none;" alt="Logo">
           <span id="brand-name" class="brand-name-text">ReviewFlow</span>
         </a>
-        <a id="admin-panel-btn" class="btn btn-sm btn-ghost" href="/" style="display:none;">
+        <a id="admin-panel-btn" class="btn btn-sm btn-ghost" href="/" style="display:none; margin-left:auto;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
           Admin
         </a>
@@ -168,25 +167,22 @@
           <div id="caption-history" class="text-history" style="display:none;"></div>
         </div>
 
-        <!-- Image Text (OCR) -->
+        <!-- Image Text -->
         <div class="sidebar-section" id="image-text-section" style="display:none;">
           <h3>
             Image Text
             <span class="image-text-meta" id="image-text-meta"></span>
           </h3>
           <div class="image-text-controls">
-            <button class="btn btn-outline btn-sm" id="scan-text-btn" onclick="scanImageText()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-              <span id="scan-text-label">Scan Text</span>
-            </button>
+            <div></div>
             <div class="image-text-tabs" id="image-text-tabs" style="display:none;">
               <button class="image-text-tab active" data-tab="edit" onclick="switchImageTextTab('edit')">Edit</button>
               <button class="image-text-tab" data-tab="changes" onclick="switchImageTextTab('changes')">Changes</button>
               <button class="image-text-tab" data-tab="history" onclick="switchImageTextTab('history')">History</button>
             </div>
           </div>
-          <div id="image-text-edit" style="display:none;">
-            <textarea id="image-text-input" class="input-field textarea" rows="5" placeholder="Extracted text will appear here..."></textarea>
+          <div id="image-text-edit">
+            <textarea id="image-text-input" class="input-field textarea" rows="5" placeholder="Enter the text from the image or graphic..."></textarea>
             <button class="btn btn-outline btn-sm" onclick="saveImageText()" style="margin-top:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
               Save Changes

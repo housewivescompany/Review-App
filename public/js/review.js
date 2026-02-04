@@ -1223,7 +1223,7 @@ function renderVersionHistory() {
   }
 
   const currentNum = creative.versions.length + 1;
-  let html = `<div class="version-item active">
+  let html = `<div class="version-item active" onclick="viewCurrentVersion()">
     <span class="version-item-label">v${currentNum} (current)</span>
     <span class="version-item-date">${formatDate(creative.uploadedAt)}</span>
   </div>`;
@@ -1263,6 +1263,19 @@ function viewOldVersion(versionIndex) {
   if (items[itemIndex]) items[itemIndex].classList.add('active');
 
   showToast(`Viewing version ${v.versionNumber}`);
+}
+
+function viewCurrentVersion() {
+  // Restore current version media
+  renderMedia();
+  document.getElementById('media-filename').textContent = creative.originalName;
+
+  // Highlight current version in history
+  document.querySelectorAll('.version-item').forEach((el, i) => {
+    el.classList.toggle('active', i === 0);
+  });
+
+  showToast('Viewing current version');
 }
 
 function viewCurrentVersion() {
@@ -1405,19 +1418,16 @@ function showImageTextSection() {
   }
   section.style.display = 'block';
 
-  // If text already extracted, show it
+  // Show existing text if any
   if (creative.imageText && creative.imageText.current) {
     document.getElementById('image-text-input').value = creative.imageText.current;
     document.getElementById('image-text-tabs').style.display = 'flex';
-    document.getElementById('image-text-edit').style.display = 'block';
-    document.getElementById('scan-text-label').textContent = 'Re-scan';
     updateImageTextMeta();
     renderImageTextChanges();
     renderImageTextHistory();
   } else {
+    document.getElementById('image-text-input').value = '';
     document.getElementById('image-text-tabs').style.display = 'none';
-    document.getElementById('image-text-edit').style.display = 'none';
-    document.getElementById('scan-text-label').textContent = 'Scan Text';
   }
 }
 
@@ -1430,78 +1440,30 @@ function updateImageTextMeta() {
   meta.textContent = `Last edit: ${creative.imageText.lastEditedBy}`;
 }
 
-async function scanImageText() {
-  if (!creative || creative.mediaType !== 'image') return;
-
-  const btn = document.getElementById('scan-text-btn');
-  const label = document.getElementById('scan-text-label');
-  btn.disabled = true;
-  label.textContent = 'Scanning...';
-
-  try {
-    if (typeof Tesseract === 'undefined') {
-      showToast('OCR library is still loading, please wait...', 'error');
-      btn.disabled = false;
-      label.textContent = 'Scan Text';
-      return;
-    }
-
-    const result = await Tesseract.recognize(creative.filePath, 'eng', {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          const pct = Math.round((m.progress || 0) * 100);
-          label.textContent = `Scanning... ${pct}%`;
-        }
-      }
-    });
-
-    const text = cleanOcrText(result.data.text);
-    if (!text) {
-      showToast('No text found in this image');
-      btn.disabled = false;
-      label.textContent = 'Scan Text';
-      return;
-    }
-
-    // Save as original text
-    await fetch(`/api/projects/${projectId}/creatives/${creativeId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageText: { original: text } })
-    });
-
-    // Update local state
-    creative.imageText = { original: text, current: text, history: [] };
-    document.getElementById('image-text-input').value = text;
-    document.getElementById('image-text-tabs').style.display = 'flex';
-    document.getElementById('image-text-edit').style.display = 'block';
-    renderImageTextChanges();
-    renderImageTextHistory();
-    showToast('Text extracted successfully!');
-  } catch (err) {
-    showToast('Failed to scan text', 'error');
-  } finally {
-    btn.disabled = false;
-    label.textContent = 'Re-scan';
-  }
-}
-
 async function saveImageText() {
   const identity = getIdentity();
   const author = (identity && identity.name) ? identity.name : 'Anonymous';
   const text = document.getElementById('image-text-input').value;
 
   try {
+    // If no imageText exists yet, set original; otherwise update current
+    const payload = (!creative.imageText || !creative.imageText.original)
+      ? { imageText: { original: text } }
+      : { imageText: { current: text, author } };
+
     const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageText: { current: text, author } })
+      body: JSON.stringify(payload)
     });
     creative = await res.json();
+
+    // Show tabs now that we have saved text
+    document.getElementById('image-text-tabs').style.display = 'flex';
     updateImageTextMeta();
     renderImageTextChanges();
     renderImageTextHistory();
-    showToast('Text changes saved!');
+    showToast('Text saved!');
   } catch (err) {
     showToast('Failed to save text', 'error');
   }
@@ -1571,110 +1533,6 @@ function renderImageTextHistory() {
   }
 
   container.innerHTML = html;
-}
-
-// Clean up OCR output — aggressively remove garbage, stray numbers, and join broken lines
-function cleanOcrText(raw) {
-  // Common 2-letter English words to keep
-  const twoLetterWords = new Set([
-    'an','am','as','at','be','by','do','go','ha','he','hi','if','in','is','it',
-    'me','my','no','of','oh','ok','on','or','so','to','up','us','we'
-  ]);
-
-  const lines = raw.split('\n');
-  const cleaned = [];
-
-  for (let line of lines) {
-    // Normalize characters — strip brackets, pipes, and common OCR symbols
-    let s = line
-      .replace(/[¦¥§©®™°±²³µ¶·¸¹º»¼½¾¿×÷ðþ€£¢¤«»¬­®¯¨ª´¡¿\[\]{}]/g, '')
-      .replace(/[—–−]/g, '-')
-      .replace(/[''`´]/g, "'")
-      .replace(/[""„]/g, '"')
-      .replace(/[|\\]/g, '')
-      .replace(/[><=:;]{2,}/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-
-    if (!s) continue;
-
-    // Split into tokens
-    const tokens = s.split(/\s+/);
-
-    // Filter junk tokens
-    const goodTokens = tokens.filter(t => {
-      // Strip leading/trailing punctuation from token for checking
-      const core = t.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
-      // Drop empty cores
-      if (!core) return false;
-      // Drop single characters that aren't real words (a, I)
-      if (core.length === 1 && !/^[aAI]$/i.test(core)) return false;
-      // Drop tokens that are purely numbers (stray page/column numbers)
-      if (/^\d+$/.test(core)) return false;
-      // Drop 2-letter tokens unless they're common English words
-      if (core.length === 2 && !twoLetterWords.has(core.toLowerCase())) return false;
-      // Drop tokens with very low letter ratio
-      const letters = (core.match(/[a-zA-Z]/g) || []).length;
-      if (core.length > 1 && letters / core.length < 0.5) return false;
-      return true;
-    });
-
-    if (goodTokens.length === 0) continue;
-
-    // Reconstruct line
-    let rebuilt = goodTokens.join(' ').trim();
-
-    // Strip leading/trailing punctuation noise
-    rebuilt = rebuilt.replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9.!?'")]+$/, '');
-
-    if (!rebuilt) continue;
-
-    // Final line-level filters
-    const alphaCount = (rebuilt.match(/[a-zA-Z]/g) || []).length;
-    const totalLen = rebuilt.replace(/\s/g, '').length;
-
-    if (totalLen > 0 && alphaCount / totalLen < 0.5) continue;
-    if (alphaCount < 3) continue;
-
-    // Drop lines with too many short tokens (OCR noise)
-    const avgTokenLen = goodTokens.reduce((sum, t) => sum + t.length, 0) / goodTokens.length;
-    if (goodTokens.length > 2 && avgTokenLen < 2) continue;
-
-    const shortCount = goodTokens.filter(t => t.replace(/[^a-zA-Z]/g, '').length <= 2).length;
-    if (goodTokens.length >= 3 && shortCount / goodTokens.length > 0.6) continue;
-
-    cleaned.push(rebuilt);
-  }
-
-  // Now join continuation lines into paragraphs.
-  // If a line doesn't end with sentence-ending punctuation and the next line
-  // starts with a lowercase letter, they belong to the same paragraph.
-  const paragraphs = [];
-  let current = '';
-
-  for (let i = 0; i < cleaned.length; i++) {
-    const line = cleaned[i];
-
-    if (!current) {
-      current = line;
-    } else {
-      // Check if this line continues the previous one
-      const prevEndsWithPunctuation = /[.!?:;'"]$/.test(current);
-      const thisStartsLower = /^[a-z]/.test(line);
-
-      if (!prevEndsWithPunctuation || thisStartsLower) {
-        // Continuation — join with a space
-        current += ' ' + line;
-      } else {
-        // New paragraph
-        paragraphs.push(current);
-        current = line;
-      }
-    }
-  }
-  if (current) paragraphs.push(current);
-
-  return paragraphs.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // Word-level diff using LCS (Longest Common Subsequence)
