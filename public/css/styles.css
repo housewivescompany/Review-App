@@ -1666,10 +1666,13 @@ img.media-content {
     min-width: 100%;
     border-left: none;
     border-top: 1px solid var(--border);
+    max-height: 70vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .comments-list {
-    max-height: 200px;
+    max-height: none;
   }
 
   .section-header {
