@@ -473,6 +473,9 @@ function renderCreativeReview() {
   // Comments
   renderComments();
 
+  // Image Text (OCR) section
+  showImageTextSection();
+
   // Version section (admin only)
   showVersionSection();
 
@@ -1294,6 +1297,229 @@ async function uploadNewVersion(file) {
     btn.disabled = false;
     btn.innerHTML = origText;
   }
+}
+
+// ─── Image Text (OCR) ─────────────────────────────────────────
+function showImageTextSection() {
+  const section = document.getElementById('image-text-section');
+  if (!creative || creative.mediaType !== 'image') {
+    if (section) section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  // If text already extracted, show it
+  if (creative.imageText && creative.imageText.current) {
+    document.getElementById('image-text-input').value = creative.imageText.current;
+    document.getElementById('image-text-tabs').style.display = 'flex';
+    document.getElementById('image-text-edit').style.display = 'block';
+    document.getElementById('scan-text-label').textContent = 'Re-scan';
+    updateImageTextMeta();
+    renderImageTextChanges();
+    renderImageTextHistory();
+  } else {
+    document.getElementById('image-text-tabs').style.display = 'none';
+    document.getElementById('image-text-edit').style.display = 'none';
+    document.getElementById('scan-text-label').textContent = 'Scan Text';
+  }
+}
+
+function updateImageTextMeta() {
+  const meta = document.getElementById('image-text-meta');
+  if (!creative.imageText || !creative.imageText.lastEditedBy) {
+    meta.textContent = '';
+    return;
+  }
+  meta.textContent = `Last edit: ${creative.imageText.lastEditedBy}`;
+}
+
+async function scanImageText() {
+  if (!creative || creative.mediaType !== 'image') return;
+
+  const btn = document.getElementById('scan-text-btn');
+  const label = document.getElementById('scan-text-label');
+  btn.disabled = true;
+  label.textContent = 'Scanning...';
+
+  try {
+    if (typeof Tesseract === 'undefined') {
+      showToast('OCR library is still loading, please wait...', 'error');
+      btn.disabled = false;
+      label.textContent = 'Scan Text';
+      return;
+    }
+
+    const result = await Tesseract.recognize(creative.filePath, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const pct = Math.round((m.progress || 0) * 100);
+          label.textContent = `Scanning... ${pct}%`;
+        }
+      }
+    });
+
+    const text = result.data.text.trim();
+    if (!text) {
+      showToast('No text found in this image');
+      btn.disabled = false;
+      label.textContent = 'Scan Text';
+      return;
+    }
+
+    // Save as original text
+    await fetch(`/api/projects/${projectId}/creatives/${creativeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageText: { original: text } })
+    });
+
+    // Update local state
+    creative.imageText = { original: text, current: text, history: [] };
+    document.getElementById('image-text-input').value = text;
+    document.getElementById('image-text-tabs').style.display = 'flex';
+    document.getElementById('image-text-edit').style.display = 'block';
+    renderImageTextChanges();
+    renderImageTextHistory();
+    showToast('Text extracted successfully!');
+  } catch (err) {
+    showToast('Failed to scan text', 'error');
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Re-scan';
+  }
+}
+
+async function saveImageText() {
+  const identity = getIdentity();
+  const author = (identity && identity.name) ? identity.name : 'Anonymous';
+  const text = document.getElementById('image-text-input').value;
+
+  try {
+    const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageText: { current: text, author } })
+    });
+    creative = await res.json();
+    updateImageTextMeta();
+    renderImageTextChanges();
+    renderImageTextHistory();
+    showToast('Text changes saved!');
+  } catch (err) {
+    showToast('Failed to save text', 'error');
+  }
+}
+
+function switchImageTextTab(tab) {
+  document.querySelectorAll('.image-text-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  document.getElementById('image-text-edit').style.display = tab === 'edit' ? 'block' : 'none';
+  document.getElementById('image-text-changes').style.display = tab === 'changes' ? 'block' : 'none';
+  document.getElementById('image-text-history').style.display = tab === 'history' ? 'block' : 'none';
+}
+
+function renderImageTextChanges() {
+  const container = document.getElementById('image-text-changes');
+  if (!creative.imageText || !creative.imageText.original) {
+    container.innerHTML = '<p class="no-comments">No text extracted yet.</p>';
+    return;
+  }
+
+  const original = creative.imageText.original;
+  const current = creative.imageText.current || original;
+
+  if (original === current) {
+    container.innerHTML = '<p class="no-comments">No changes from original.</p>';
+    return;
+  }
+
+  const diff = computeWordDiff(original, current);
+  container.innerHTML = `
+    <div class="diff-legend">
+      <span class="diff-legend-item"><span class="diff-added-sample">added</span></span>
+      <span class="diff-legend-item"><span class="diff-removed-sample">removed</span></span>
+    </div>
+    <div class="diff-content">${renderDiff(diff)}</div>
+  `;
+}
+
+function renderImageTextHistory() {
+  const container = document.getElementById('image-text-history');
+  if (!creative.imageText || !creative.imageText.history || creative.imageText.history.length === 0) {
+    container.innerHTML = '<p class="no-comments">No edit history yet.</p>';
+    return;
+  }
+
+  const history = creative.imageText.history;
+  let html = '';
+
+  // Show each revision as a diff against the previous version
+  for (let i = history.length - 1; i >= 0; i--) {
+    const entry = history[i];
+    const prevText = entry.text;
+    const nextText = i === history.length - 1 ? creative.imageText.current : history[i + 1].text;
+    const nextAuthor = i === history.length - 1 ? (creative.imageText.lastEditedBy || 'Unknown') : history[i + 1].author;
+    const diff = computeWordDiff(prevText, nextText);
+
+    html += `
+      <div class="history-entry">
+        <div class="history-entry-header">
+          <strong>${escapeHtml(nextAuthor)}</strong>
+          <span class="comment-date">${formatDate(i === history.length - 1 ? creative.imageText.lastEditedAt : history[i + 1].timestamp)}</span>
+        </div>
+        <div class="diff-content">${renderDiff(diff)}</div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+// Word-level diff using LCS (Longest Common Subsequence)
+function computeWordDiff(oldText, newText) {
+  const oldWords = oldText.split(/(\s+)/).filter(w => w);
+  const newWords = newText.split(/(\s+)/).filter(w => w);
+
+  const m = oldWords.length;
+  const n = newWords.length;
+
+  // Build LCS table
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldWords[i - 1] === newWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  // Backtrack to produce diff
+  const result = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldWords[i - 1] === newWords[j - 1]) {
+      result.unshift({ type: 'same', word: oldWords[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.unshift({ type: 'added', word: newWords[j - 1] });
+      j--;
+    } else {
+      result.unshift({ type: 'removed', word: oldWords[i - 1] });
+      i--;
+    }
+  }
+  return result;
+}
+
+function renderDiff(diff) {
+  return diff.map(d => {
+    if (d.type === 'added') return `<span class="diff-added">${escapeHtml(d.word)}</span>`;
+    if (d.type === 'removed') return `<span class="diff-removed">${escapeHtml(d.word)}</span>`;
+    return escapeHtml(d.word);
+  }).join('');
 }
 
 // ─── Utilities ────────────────────────────────────────────────

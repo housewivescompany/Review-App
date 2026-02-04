@@ -742,7 +742,7 @@ app.patch('/api/projects/:projectId/creatives/:creativeId', (req, res) => {
   const creative = project.creatives.find(c => c.id === req.params.creativeId);
   if (!creative) return res.status(404).json({ error: 'Creative not found' });
 
-  const { caption, title, status } = req.body;
+  const { caption, title, status, imageText } = req.body;
   if (caption !== undefined) creative.caption = caption;
   if (title !== undefined) creative.title = title;
   if (status !== undefined) {
@@ -753,6 +753,34 @@ app.patch('/api/projects/:projectId/creatives/:creativeId', (req, res) => {
     creative.status = status;
     if (status === 'revision_requested') {
       creative.revisionNumber = (creative.revisionNumber || 1) + 1;
+    }
+  }
+
+  // Image text (OCR) — supports original extraction and client edits with history
+  if (imageText !== undefined) {
+    if (!creative.imageText) creative.imageText = {};
+
+    // Setting the original OCR text (first extraction)
+    if (imageText.original !== undefined && !creative.imageText.original) {
+      creative.imageText.original = imageText.original;
+      creative.imageText.current = imageText.original;
+      creative.imageText.history = [];
+    }
+
+    // Client editing the text — track who changed what
+    if (imageText.current !== undefined && imageText.author) {
+      const prev = creative.imageText.current || '';
+      if (imageText.current !== prev) {
+        if (!creative.imageText.history) creative.imageText.history = [];
+        creative.imageText.history.push({
+          text: prev,
+          author: imageText.author,
+          timestamp: new Date().toISOString()
+        });
+        creative.imageText.current = imageText.current;
+        creative.imageText.lastEditedBy = imageText.author;
+        creative.imageText.lastEditedAt = new Date().toISOString();
+      }
     }
   }
 
