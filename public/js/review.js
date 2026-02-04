@@ -277,6 +277,13 @@ function parseUrl() {
   // /review/:projectId or /review/:projectId/:creativeId
   if (parts.length >= 2 && parts[0] === 'review') {
     projectId = parts[1];
+
+    // Show admin panel link if user is admin
+    const adminPanelBtn = document.getElementById('admin-panel-btn');
+    if (adminPanelBtn && getAdminToken()) {
+      adminPanelBtn.style.display = 'inline-flex';
+    }
+
     if (parts.length >= 3) {
       creativeId = parts[2];
       loadCreative();
@@ -1568,17 +1575,23 @@ function renderImageTextHistory() {
 
 // Clean up OCR output — aggressively remove garbage, stray numbers, and join broken lines
 function cleanOcrText(raw) {
+  // Common 2-letter English words to keep
+  const twoLetterWords = new Set([
+    'an','am','as','at','be','by','do','go','ha','he','hi','if','in','is','it',
+    'me','my','no','of','oh','ok','on','or','so','to','up','us','we'
+  ]);
+
   const lines = raw.split('\n');
   const cleaned = [];
 
   for (let line of lines) {
-    // Normalize characters
+    // Normalize characters — strip brackets, pipes, and common OCR symbols
     let s = line
-      .replace(/[¦¥§©®™°±²³µ¶·¸¹º»¼½¾¿×÷ðþ€£¢¤«»¬­®¯¨ª´¡¿]/g, '')
+      .replace(/[¦¥§©®™°±²³µ¶·¸¹º»¼½¾¿×÷ðþ€£¢¤«»¬­®¯¨ª´¡¿\[\]{}]/g, '')
       .replace(/[—–−]/g, '-')
       .replace(/[''`´]/g, "'")
       .replace(/[""„]/g, '"')
-      .replace(/\|/g, '')
+      .replace(/[|\\]/g, '')
       .replace(/[><=:;]{2,}/g, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
@@ -1590,15 +1603,19 @@ function cleanOcrText(raw) {
 
     // Filter junk tokens
     const goodTokens = tokens.filter(t => {
+      // Strip leading/trailing punctuation from token for checking
+      const core = t.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+      // Drop empty cores
+      if (!core) return false;
       // Drop single characters that aren't real words (a, I)
-      if (t.length === 1 && !/^[aAI]$/.test(t)) return false;
+      if (core.length === 1 && !/^[aAI]$/i.test(core)) return false;
       // Drop tokens that are purely numbers (stray page/column numbers)
-      if (/^\d+$/.test(t)) return false;
-      // Drop tokens that are only punctuation/symbols
-      if (/^[^a-zA-Z0-9]+$/.test(t)) return false;
+      if (/^\d+$/.test(core)) return false;
+      // Drop 2-letter tokens unless they're common English words
+      if (core.length === 2 && !twoLetterWords.has(core.toLowerCase())) return false;
       // Drop tokens with very low letter ratio
-      const letters = (t.match(/[a-zA-Z]/g) || []).length;
-      if (t.length > 1 && letters / t.length < 0.4) return false;
+      const letters = (core.match(/[a-zA-Z]/g) || []).length;
+      if (core.length > 1 && letters / core.length < 0.5) return false;
       return true;
     });
 
