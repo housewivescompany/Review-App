@@ -145,13 +145,20 @@
             Caption / Copy
             <span class="image-text-meta" id="caption-meta"></span>
           </h3>
-          <div class="image-text-tabs" id="caption-tabs" style="display:none;">
-            <button class="image-text-tab active" data-tab="edit" onclick="switchCaptionTab('edit')">Edit</button>
-            <button class="image-text-tab" data-tab="changes" onclick="switchCaptionTab('changes')">Changes</button>
-            <button class="image-text-tab" data-tab="history" onclick="switchCaptionTab('history')">History</button>
+          <div class="image-text-controls">
+            <div></div>
+            <div class="image-text-tabs" id="caption-tabs" style="display:none;">
+              <button class="image-text-tab active" data-tab="edit" onclick="switchCaptionTab('edit')">Edit</button>
+              <button class="image-text-tab" data-tab="changes" onclick="switchCaptionTab('changes')">Changes</button>
+              <button class="image-text-tab" data-tab="history" onclick="switchCaptionTab('history')">History</button>
+            </div>
           </div>
           <div id="caption-edit">
             <textarea id="creative-caption" class="input-field textarea" rows="6" placeholder="Enter caption, ad copy, or description..."></textarea>
+            <button class="btn btn-outline btn-sm" onclick="saveDetails()" style="margin-top:6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Save Changes
+            </button>
           </div>
           <div id="caption-changes" class="diff-view" style="display:none;"></div>
           <div id="caption-history" class="text-history" style="display:none;"></div>
@@ -176,20 +183,13 @@
           </div>
           <div id="image-text-edit" style="display:none;">
             <textarea id="image-text-input" class="input-field textarea" rows="5" placeholder="Extracted text will appear here..."></textarea>
-            <button class="btn btn-accent btn-sm" onclick="saveImageText()" style="margin-top:6px;">
+            <button class="btn btn-outline btn-sm" onclick="saveImageText()" style="margin-top:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-              Save Text Changes
+              Save Changes
             </button>
           </div>
           <div id="image-text-changes" class="diff-view" style="display:none;"></div>
           <div id="image-text-history" class="text-history" style="display:none;"></div>
-        </div>
-
-        <div class="sidebar-section save-row">
-          <button class="btn btn-outline btn-sm" onclick="saveDetails()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-            Save Details
-          </button>
         </div>
 
         <!-- Version History (admin only) -->
