@@ -1566,7 +1566,7 @@ function renderImageTextHistory() {
   container.innerHTML = html;
 }
 
-// Clean up OCR output — aggressively remove garbage and noise
+// Clean up OCR output — aggressively remove garbage, stray numbers, and join broken lines
 function cleanOcrText(raw) {
   const lines = raw.split('\n');
   const cleaned = [];
@@ -1579,22 +1579,24 @@ function cleanOcrText(raw) {
       .replace(/[''`´]/g, "'")
       .replace(/[""„]/g, '"')
       .replace(/\|/g, '')
-      .replace(/[><=:;]{2,}/g, '')     // repeated punctuation clusters
+      .replace(/[><=:;]{2,}/g, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
 
     if (!s) continue;
 
-    // Split into tokens (words)
+    // Split into tokens
     const tokens = s.split(/\s+/);
 
-    // Filter out junk tokens: single non-word chars, isolated punctuation
+    // Filter junk tokens
     const goodTokens = tokens.filter(t => {
-      // Drop single characters that aren't real words (a, I, numbers)
-      if (t.length === 1 && !/^[aAI0-9]$/.test(t)) return false;
+      // Drop single characters that aren't real words (a, I)
+      if (t.length === 1 && !/^[aAI]$/.test(t)) return false;
+      // Drop tokens that are purely numbers (stray page/column numbers)
+      if (/^\d+$/.test(t)) return false;
       // Drop tokens that are only punctuation/symbols
       if (/^[^a-zA-Z0-9]+$/.test(t)) return false;
-      // Drop tokens with very low letter ratio (e.g., "!@#$a")
+      // Drop tokens with very low letter ratio
       const letters = (t.match(/[a-zA-Z]/g) || []).length;
       if (t.length > 1 && letters / t.length < 0.4) return false;
       return true;
@@ -1602,10 +1604,10 @@ function cleanOcrText(raw) {
 
     if (goodTokens.length === 0) continue;
 
-    // Reconstruct line from good tokens
+    // Reconstruct line
     let rebuilt = goodTokens.join(' ').trim();
 
-    // Strip leading/trailing punctuation noise (but keep sentence-ending periods)
+    // Strip leading/trailing punctuation noise
     rebuilt = rebuilt.replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9.!?'")]+$/, '');
 
     if (!rebuilt) continue;
@@ -1614,25 +1616,48 @@ function cleanOcrText(raw) {
     const alphaCount = (rebuilt.match(/[a-zA-Z]/g) || []).length;
     const totalLen = rebuilt.replace(/\s/g, '').length;
 
-    // Line must be mostly letters
     if (totalLen > 0 && alphaCount / totalLen < 0.5) continue;
-
-    // Drop very short lines (fewer than 3 letters) — likely noise
     if (alphaCount < 3) continue;
 
-    // Drop lines with too many short tokens (sign of OCR noise)
+    // Drop lines with too many short tokens (OCR noise)
     const avgTokenLen = goodTokens.reduce((sum, t) => sum + t.length, 0) / goodTokens.length;
     if (goodTokens.length > 2 && avgTokenLen < 2) continue;
 
-    // Drop lines where most tokens are <=2 chars (gibberish fragments)
     const shortCount = goodTokens.filter(t => t.replace(/[^a-zA-Z]/g, '').length <= 2).length;
     if (goodTokens.length >= 3 && shortCount / goodTokens.length > 0.6) continue;
 
     cleaned.push(rebuilt);
   }
 
-  // Join and collapse multiple blank lines
-  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  // Now join continuation lines into paragraphs.
+  // If a line doesn't end with sentence-ending punctuation and the next line
+  // starts with a lowercase letter, they belong to the same paragraph.
+  const paragraphs = [];
+  let current = '';
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const line = cleaned[i];
+
+    if (!current) {
+      current = line;
+    } else {
+      // Check if this line continues the previous one
+      const prevEndsWithPunctuation = /[.!?:;'"]$/.test(current);
+      const thisStartsLower = /^[a-z]/.test(line);
+
+      if (!prevEndsWithPunctuation || thisStartsLower) {
+        // Continuation — join with a space
+        current += ' ' + line;
+      } else {
+        // New paragraph
+        paragraphs.push(current);
+        current = line;
+      }
+    }
+  }
+  if (current) paragraphs.push(current);
+
+  return paragraphs.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // Word-level diff using LCS (Longest Common Subsequence)

@@ -989,6 +989,8 @@ img.media-content {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 40px;
 }
 
 .status-banner {
