@@ -1208,6 +1208,134 @@ img.media-content {
   padding: 20px 0;
 }
 
+/* ─── Image Text (OCR) ───────────────────────────────────── */
+.image-text-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 8px;
+}
+
+.image-text-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.image-text-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.image-text-tab {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.image-text-tab.active {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.image-text-tab:hover {
+  color: var(--text);
+}
+
+/* Diff highlighting */
+.diff-view, .text-history {
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.diff-content {
+  padding: 10px;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.diff-added {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--green);
+  padding: 1px 2px;
+  border-radius: 2px;
+  text-decoration: none;
+}
+
+.diff-removed {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+  padding: 1px 2px;
+  border-radius: 2px;
+  text-decoration: line-through;
+}
+
+.diff-legend {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.diff-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.diff-added-sample {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--green);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 0.7rem;
+}
+
+.diff-removed-sample {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 0.7rem;
+  text-decoration: line-through;
+}
+
+/* Edit history */
+.history-entry {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-entry:last-child {
+  border-bottom: none;
+}
+
+.history-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+.history-entry-header strong {
+  color: var(--text);
+}
+
 .comment-form {
   display: flex;
   flex-direction: column;
