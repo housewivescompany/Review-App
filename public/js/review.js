@@ -470,6 +470,9 @@ function renderCreativeReview() {
   savedTitle = creative.title || '';
   savedCaption = creative.caption || '';
 
+  // Caption tracking
+  showCaptionTracking();
+
   // Comments
   renderComments();
 
@@ -556,18 +559,26 @@ function updateStatusBanner() {
 
 // ─── Actions ─────────────────────────────────────────────────
 async function saveDetails() {
+  const identity = getIdentity();
+  const author = (identity && identity.name) ? identity.name : 'Anonymous';
   const title = document.getElementById('creative-title').value;
   const caption = document.getElementById('creative-caption').value;
 
   try {
+    const body = { title, caption };
+    // Track caption changes with author if caption was modified
+    if (caption !== savedCaption) {
+      body.captionAuthor = author;
+    }
     const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, caption })
+      body: JSON.stringify(body)
     });
     creative = await res.json();
     savedTitle = creative.title || '';
     savedCaption = creative.caption || '';
+    showCaptionTracking();
     showToast('Details saved!');
   } catch (err) {
     showToast('Failed to save', 'error');
@@ -1299,6 +1310,85 @@ async function uploadNewVersion(file) {
   }
 }
 
+// ─── Caption / Copy Tracking ──────────────────────────────────
+function showCaptionTracking() {
+  const tabs = document.getElementById('caption-tabs');
+  const meta = document.getElementById('caption-meta');
+  if (!creative || !creative.captionData) {
+    if (tabs) tabs.style.display = 'none';
+    if (meta) meta.textContent = '';
+    return;
+  }
+  const cd = creative.captionData;
+  if (cd.history && cd.history.length > 0) {
+    tabs.style.display = 'flex';
+  }
+  if (cd.lastEditedBy) {
+    meta.textContent = `Last edit: ${cd.lastEditedBy}`;
+  }
+  renderCaptionChanges();
+  renderCaptionHistory();
+}
+
+function switchCaptionTab(tab) {
+  document.querySelectorAll('#caption-tabs .image-text-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  document.getElementById('caption-edit').style.display = tab === 'edit' ? 'block' : 'none';
+  document.getElementById('caption-changes').style.display = tab === 'changes' ? 'block' : 'none';
+  document.getElementById('caption-history').style.display = tab === 'history' ? 'block' : 'none';
+}
+
+function renderCaptionChanges() {
+  const container = document.getElementById('caption-changes');
+  if (!creative.captionData || !creative.captionData.original) {
+    container.innerHTML = '<p class="no-comments">No changes yet.</p>';
+    return;
+  }
+  const original = creative.captionData.original;
+  const current = creative.caption || '';
+  if (original === current) {
+    container.innerHTML = '<p class="no-comments">No changes from original.</p>';
+    return;
+  }
+  const diff = computeWordDiff(original, current);
+  container.innerHTML = `
+    <div class="diff-legend">
+      <span class="diff-legend-item"><span class="diff-added-sample">added</span></span>
+      <span class="diff-legend-item"><span class="diff-removed-sample">removed</span></span>
+    </div>
+    <div class="diff-content">${renderDiff(diff)}</div>
+  `;
+}
+
+function renderCaptionHistory() {
+  const container = document.getElementById('caption-history');
+  if (!creative.captionData || !creative.captionData.history || creative.captionData.history.length === 0) {
+    container.innerHTML = '<p class="no-comments">No edit history yet.</p>';
+    return;
+  }
+  const history = creative.captionData.history;
+  let html = '';
+  for (let i = history.length - 1; i >= 0; i--) {
+    const entry = history[i];
+    const prevText = entry.text;
+    const nextText = i === history.length - 1 ? (creative.caption || '') : history[i + 1].text;
+    const nextAuthor = i === history.length - 1 ? (creative.captionData.lastEditedBy || 'Unknown') : history[i + 1].author;
+    const nextTime = i === history.length - 1 ? creative.captionData.lastEditedAt : history[i + 1].timestamp;
+    const diff = computeWordDiff(prevText, nextText);
+    html += `
+      <div class="history-entry">
+        <div class="history-entry-header">
+          <strong>${escapeHtml(nextAuthor)}</strong>
+          <span class="comment-date">${formatDate(nextTime)}</span>
+        </div>
+        <div class="diff-content">${renderDiff(diff)}</div>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+}
+
 // ─── Image Text (OCR) ─────────────────────────────────────────
 function showImageTextSection() {
   const section = document.getElementById('image-text-section');
@@ -1358,7 +1448,7 @@ async function scanImageText() {
       }
     });
 
-    const text = result.data.text.trim();
+    const text = cleanOcrText(result.data.text);
     if (!text) {
       showToast('No text found in this image');
       btn.disabled = false;
@@ -1474,6 +1564,34 @@ function renderImageTextHistory() {
   }
 
   container.innerHTML = html;
+}
+
+// Clean up OCR output — remove garbage symbols and noise lines
+function cleanOcrText(raw) {
+  return raw
+    .split('\n')
+    .map(line => {
+      // Replace common OCR garbage characters
+      let cleaned = line
+        .replace(/[¦¥§©®™°±²³µ¶·¸¹º»¼½¾¿×÷ðþ]/g, '')
+        .replace(/[—–]/g, '-')    // normalize dashes
+        .replace(/['']/g, "'")    // normalize quotes
+        .replace(/[""]/g, '"')
+        .replace(/\s*-\s*-\s*/g, ' — ')  // collapse dash chains
+        .replace(/\s+-\s+/g, ' ')   // remove isolated dashes between words
+        .replace(/\s{2,}/g, ' ')    // collapse multiple spaces
+        .trim();
+      return cleaned;
+    })
+    .filter(line => {
+      if (!line) return false;
+      // Drop lines that are mostly non-alphanumeric (symbol noise)
+      const alphaCount = (line.match(/[a-zA-Z0-9]/g) || []).length;
+      const ratio = alphaCount / line.length;
+      return ratio > 0.4;
+    })
+    .join('\n')
+    .trim();
 }
 
 // Word-level diff using LCS (Longest Common Subsequence)

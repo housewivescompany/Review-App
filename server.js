@@ -742,8 +742,24 @@ app.patch('/api/projects/:projectId/creatives/:creativeId', (req, res) => {
   const creative = project.creatives.find(c => c.id === req.params.creativeId);
   if (!creative) return res.status(404).json({ error: 'Creative not found' });
 
-  const { caption, title, status, imageText } = req.body;
-  if (caption !== undefined) creative.caption = caption;
+  const { caption, captionAuthor, title, status, imageText } = req.body;
+  if (caption !== undefined) {
+    const prev = creative.caption || '';
+    creative.caption = caption;
+
+    // Track caption changes with author
+    if (captionAuthor && caption !== prev) {
+      if (!creative.captionData) creative.captionData = { original: prev, history: [] };
+      if (!creative.captionData.original && prev) creative.captionData.original = prev;
+      creative.captionData.history.push({
+        text: prev,
+        author: captionAuthor,
+        timestamp: new Date().toISOString()
+      });
+      creative.captionData.lastEditedBy = captionAuthor;
+      creative.captionData.lastEditedAt = new Date().toISOString();
+    }
+  }
   if (title !== undefined) creative.title = title;
   if (status !== undefined) {
     const validStatuses = ['pending', 'approved', 'revision_requested'];

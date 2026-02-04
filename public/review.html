@@ -141,8 +141,20 @@
         </div>
 
         <div class="sidebar-section">
-          <h3>Caption / Copy</h3>
-          <textarea id="creative-caption" class="input-field textarea" rows="3" placeholder="Enter caption, ad copy, or description..."></textarea>
+          <h3>
+            Caption / Copy
+            <span class="image-text-meta" id="caption-meta"></span>
+          </h3>
+          <div class="image-text-tabs" id="caption-tabs" style="display:none;">
+            <button class="image-text-tab active" data-tab="edit" onclick="switchCaptionTab('edit')">Edit</button>
+            <button class="image-text-tab" data-tab="changes" onclick="switchCaptionTab('changes')">Changes</button>
+            <button class="image-text-tab" data-tab="history" onclick="switchCaptionTab('history')">History</button>
+          </div>
+          <div id="caption-edit">
+            <textarea id="creative-caption" class="input-field textarea" rows="6" placeholder="Enter caption, ad copy, or description..."></textarea>
+          </div>
+          <div id="caption-changes" class="diff-view" style="display:none;"></div>
+          <div id="caption-history" class="text-history" style="display:none;"></div>
         </div>
 
         <!-- Image Text (OCR) -->
