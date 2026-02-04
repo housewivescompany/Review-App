@@ -8,6 +8,7 @@ let currentAuthTab = 'guest';
 let devToken = null;
 let savedTitle = '';
 let savedCaption = '';
+let savedImageText = '';
 let zoomLevel = 1;
 let panX = 0;
 let panY = 0;
@@ -476,6 +477,7 @@ function renderCreativeReview() {
   document.getElementById('creative-caption').value = creative.caption || '';
   savedTitle = creative.title || '';
   savedCaption = creative.caption || '';
+  savedImageText = (creative.imageText && creative.imageText.current) ? creative.imageText.current : '';
 
   // Caption tracking
   showCaptionTracking();
@@ -596,7 +598,8 @@ function hasUnsavedChanges() {
   if (!creative) return false;
   const currentTitle = document.getElementById('creative-title')?.value || '';
   const currentCaption = document.getElementById('creative-caption')?.value || '';
-  return currentTitle !== savedTitle || currentCaption !== savedCaption;
+  const currentImageText = document.getElementById('image-text-input')?.value || '';
+  return currentTitle !== savedTitle || currentCaption !== savedCaption || currentImageText !== savedImageText;
 }
 
 async function setStatus(status) {
@@ -1457,6 +1460,7 @@ async function saveImageText() {
       body: JSON.stringify(payload)
     });
     creative = await res.json();
+    savedImageText = (creative.imageText && creative.imageText.current) ? creative.imageText.current : text;
 
     // Show tabs now that we have saved text
     document.getElementById('image-text-tabs').style.display = 'flex';
