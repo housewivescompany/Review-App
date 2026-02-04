@@ -986,11 +986,9 @@ img.media-content {
   min-width: 380px;
   background: var(--bg-elevated);
   border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
+  overflow-y: scroll;
   min-height: 0;
-  padding-bottom: 40px;
+  padding-bottom: 80px;
 }
 
 .status-banner {
@@ -1669,9 +1667,10 @@ img.media-content {
     min-width: 100%;
     border-left: none;
     border-top: 1px solid var(--border);
-    max-height: 70vh;
-    overflow-y: auto;
+    max-height: none;
+    overflow-y: scroll;
     -webkit-overflow-scrolling: touch;
+    padding-bottom: 80px;
   }
 
   .comments-list {
