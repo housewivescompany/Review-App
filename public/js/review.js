@@ -491,6 +491,12 @@ function renderCreativeReview() {
   // Version section (admin only)
   showVersionSection();
 
+  // Delete button (admin only)
+  const deleteBtn = document.getElementById('delete-creative-btn');
+  if (deleteBtn && isAdmin()) {
+    deleteBtn.style.display = 'flex';
+  }
+
   // Ask for identity after rendering (so page always displays even if modal has issues)
   checkIdentity();
 }
@@ -617,6 +623,36 @@ async function setStatus(status) {
     showToast(label);
   } catch (err) {
     showToast('Failed to update status', 'error');
+  }
+}
+
+async function deleteCreative() {
+  if (!confirm('Are you sure you want to delete this creative? This cannot be undone.')) {
+    return;
+  }
+
+  const adminToken = getAdminToken();
+  if (!adminToken) {
+    showToast('Admin login required', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-token': adminToken }
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to delete');
+    }
+
+    showToast('Creative deleted');
+    // Navigate back to project overview
+    window.location.href = `/review/${projectId}`;
+  } catch (err) {
+    showToast(err.message || 'Failed to delete creative', 'error');
   }
 }
 
