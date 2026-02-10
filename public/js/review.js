@@ -8,6 +8,7 @@ let currentAuthTab = 'guest';
 let devToken = null;
 let savedTitle = '';
 let savedCaption = '';
+let savedImageText = '';
 let zoomLevel = 1;
 let panX = 0;
 let panY = 0;
@@ -476,6 +477,7 @@ function renderCreativeReview() {
   document.getElementById('creative-caption').value = creative.caption || '';
   savedTitle = creative.title || '';
   savedCaption = creative.caption || '';
+  savedImageText = (creative.imageText && creative.imageText.current) ? creative.imageText.current : '';
 
   // Caption tracking
   showCaptionTracking();
@@ -488,6 +490,12 @@ function renderCreativeReview() {
 
   // Version section (admin only)
   showVersionSection();
+
+  // Delete button (admin only)
+  const deleteBtn = document.getElementById('delete-creative-btn');
+  if (deleteBtn && isAdmin()) {
+    deleteBtn.style.display = 'flex';
+  }
 
   // Ask for identity after rendering (so page always displays even if modal has issues)
   checkIdentity();
@@ -596,7 +604,8 @@ function hasUnsavedChanges() {
   if (!creative) return false;
   const currentTitle = document.getElementById('creative-title')?.value || '';
   const currentCaption = document.getElementById('creative-caption')?.value || '';
-  return currentTitle !== savedTitle || currentCaption !== savedCaption;
+  const currentImageText = document.getElementById('image-text-input')?.value || '';
+  return currentTitle !== savedTitle || currentCaption !== savedCaption || currentImageText !== savedImageText;
 }
 
 async function setStatus(status) {
@@ -614,6 +623,36 @@ async function setStatus(status) {
     showToast(label);
   } catch (err) {
     showToast('Failed to update status', 'error');
+  }
+}
+
+async function deleteCreative() {
+  if (!confirm('Are you sure you want to delete this creative? This cannot be undone.')) {
+    return;
+  }
+
+  const adminToken = getAdminToken();
+  if (!adminToken) {
+    showToast('Admin login required', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/projects/${projectId}/creatives/${creativeId}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-token': adminToken }
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to delete');
+    }
+
+    showToast('Creative deleted');
+    // Navigate back to project overview
+    window.location.href = `/review/${projectId}`;
+  } catch (err) {
+    showToast(err.message || 'Failed to delete creative', 'error');
   }
 }
 
@@ -1457,6 +1496,7 @@ async function saveImageText() {
       body: JSON.stringify(payload)
     });
     creative = await res.json();
+    savedImageText = (creative.imageText && creative.imageText.current) ? creative.imageText.current : text;
 
     // Show tabs now that we have saved text
     document.getElementById('image-text-tabs').style.display = 'flex';
